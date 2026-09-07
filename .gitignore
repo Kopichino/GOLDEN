@@ -1,0 +1,31 @@
+# Environments & Secrets
+.env
+.venv/
+env/
+venv/
+ENV/
+*.env
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker / DB data
+data/hapi_data/
+*.log
+
+# Models & Large Synthea Archives
+*.tar.gz
+*.zip
+data/synthea_output/

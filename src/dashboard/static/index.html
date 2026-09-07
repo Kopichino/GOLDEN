@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="GOLDEN: Guideline-Grounded Orchestrated LLM Dispatch for Emergency Networks - Real-time AI decision-support dashboard for 108/112 dispatchers in India.">
+  <title>GOLDEN — Emergency Network Dispatcher Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="dark-theme">
+  <!-- Top Navigation & Global Status -->
+  <header class="console-header">
+    <div class="brand-group">
+      <div class="logo-shield">
+        <span class="shield-pulse"></span>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          <path d="M12 8v8"/>
+          <path d="M8 12h8"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-title">
+          <h1>GOLDEN</h1>
+          <span class="corridor-tag">CHENNAI SOUTH CORRIDOR</span>
+        </div>
+        <p class="brand-sub">Decision Support for 108/112 Pre-Hospital Emergency Dispatch</p>
+      </div>
+    </div>
+
+    <div class="status-group">
+      <div class="system-metric" id="fhir-status-indicator">
+        <span class="dot-indicator dot-connected" id="fhir-dot"></span>
+        <div class="metric-info">
+          <span class="metric-label">HAPI FHIR R4</span>
+          <span class="metric-value" id="fhir-status-text">Connecting...</span>
+        </div>
+      </div>
+
+      <div class="system-metric">
+        <span class="dot-indicator dot-connected"></span>
+        <div class="metric-info">
+          <span class="metric-label">LangGraph Engine</span>
+          <span class="metric-value">Active (MemorySaver)</span>
+        </div>
+      </div>
+
+      <div class="system-metric">
+        <div class="metric-info">
+          <span class="metric-label">Active Incidents</span>
+          <span class="metric-value metric-accent" id="active-cases-count">0</span>
+        </div>
+      </div>
+
+      <button class="btn-primary glow-btn" id="btn-open-simulate-modal">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        <span>Simulate Incident</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Dispatcher Viewport -->
+  <main class="console-layout">
+    <!-- Left Column: Incident Feed & Queue -->
+    <aside class="incident-feed-panel">
+      <div class="panel-header">
+        <h2>Active Incident Queue</h2>
+        <div class="filter-pills" id="feed-filter-container">
+          <button class="pill active" data-filter="ALL" id="filter-all">All</button>
+          <button class="pill pill-red" data-filter="RED" id="filter-red">Critical</button>
+          <button class="pill pill-yellow" data-filter="YELLOW" id="filter-yellow">Urgent</button>
+        </div>
+      </div>
+
+      <div class="incident-list" id="incident-list-container">
+        <div class="empty-state" id="empty-queue-message">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <p>No active emergency calls.</p>
+          <span class="subtext">Click "Simulate Incident" to ingest a live emergency scenario.</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Right Column: Case Deep-Dive Inspector -->
+    <section class="case-detail-panel" id="case-detail-panel">
+      <!-- Top Inspector Bar -->
+      <div class="case-hero-card" id="case-hero-card">
+        <div class="hero-left">
+          <div class="hero-badges">
+            <span class="badge badge-case" id="hero-case-id">SELECT A CASE</span>
+            <span class="badge badge-acuity-none" id="hero-acuity-badge">PENDING</span>
+            <span class="badge badge-hard-sos hidden" id="hero-hard-sos-badge">⚡ HARD-SOS DETECTED</span>
+          </div>
+          <h2 class="hero-landmark" id="hero-landmark">No case selected</h2>
+          <p class="hero-time" id="hero-reported-time">Awaiting incoming incident...</p>
+        </div>
+
+        <div class="hero-right">
+          <button class="btn-secondary" id="btn-open-override-modal" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            <span>Dispatcher Override</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Live Agent Progression Pipeline -->
+      <div class="pipeline-card" id="pipeline-tracker-card">
+        <div class="pipeline-title">LangGraph Multi-Agent Orchestration Flow</div>
+        <div class="pipeline-steps" id="pipeline-steps-container">
+          <div class="step-item" id="step-ingest">
+            <div class="step-icon">1</div>
+            <div class="step-text">Ingestion</div>
+          </div>
+          <div class="step-connector"></div>
+          <div class="step-item" id="step-sos">
+            <div class="step-icon">2</div>
+            <div class="step-text">Hard-SOS Rule</div>
+          </div>
+          <div class="step-connector"></div>
+          <div class="step-item" id="step-fanout">
+            <div class="step-icon">3</div>
+            <div class="step-text">Parallel Fan-Out</div>
+          </div>
+          <div class="step-connector"></div>
+          <div class="step-item" id="step-merge">
+            <div class="step-icon">4</div>
+            <div class="step-text">Coordinator Merge</div>
+          </div>
+          <div class="step-connector"></div>
+          <div class="step-item" id="step-voice">
+            <div class="step-icon">5</div>
+            <div class="step-text">Voice Dispatch</div>
+          </div>
+          <div class="step-connector"></div>
+          <div class="step-item" id="step-complete">
+            <div class="step-icon">6</div>
+            <div class="step-text">Final Dispatch</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Grid of Specialist Cards -->
+      <div class="specialist-grid">
+        <!-- Card 1: Verbatim Caller Input & Safety -->
+        <div class="specialist-card">
+          <div class="card-head">
+            <div class="card-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              <span>Caller Narrative & Safety</span>
+            </div>
+            <span class="tag-status" id="safety-tag">SECURE</span>
+          </div>
+          <div class="card-body">
+            <div class="narrative-box" id="caller-narrative-text">
+              Select an incident from the queue to view raw transcript.
+            </div>
+            <div class="detail-row">
+              <span class="label">Caller Contact:</span>
+              <span class="value font-mono" id="caller-contact-value">-</span>
+            </div>
+            <div class="detail-row">
+              <span class="label">GPS Coordinates:</span>
+              <span class="value font-mono" id="caller-gps-value">-</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2: Clinical Triage Agent -->
+        <div class="specialist-card">
+          <div class="card-head">
+            <div class="card-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+              <span>Triage Agent (Guideline-Grounded)</span>
+            </div>
+            <span class="confidence-badge" id="triage-confidence-badge">0% CONFIDENCE</span>
+          </div>
+          <div class="card-body">
+            <div class="guideline-ref-box">
+              <span class="guideline-label">CLINICAL STANDARD:</span>
+              <span class="guideline-text" id="triage-guideline-text">Awaiting assessment</span>
+            </div>
+            <div class="rationale-box" id="triage-rationale-text">
+              Clinical rationale will be synthesized here based on AIIMS Emergency Protocol / MoRTH 2025 SOP.
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 3: Hospital & Bed Matcher -->
+        <div class="specialist-card">
+          <div class="card-head">
+            <div class="card-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
+              <span>Hospital & Live Bed Matching</span>
+            </div>
+            <span class="bed-status-badge" id="hospital-bed-badge">NO BED</span>
+          </div>
+          <div class="card-body">
+            <div class="selected-hospital-box">
+              <div class="hosp-name" id="selected-hospital-name">Searching nearest trauma facility...</div>
+              <div class="hosp-meta">
+                <span class="meta-item font-mono" id="hosp-distance-val">- km away</span>
+                <span class="meta-item" id="hosp-trauma-val">Trauma Level: -</span>
+                <span class="meta-item highlight" id="hosp-beds-val">Available ICU: -</span>
+              </div>
+            </div>
+            <div class="candidates-table-container">
+              <div class="table-label">Top Ranked Chennai Corridor Facilities:</div>
+              <table class="candidates-table" id="candidates-table">
+                <thead>
+                  <tr>
+                    <th>Facility</th>
+                    <th>Distance</th>
+                    <th>ICU/ER</th>
+                    <th>Score</th>
+                  </tr>
+                </thead>
+                <tbody id="candidates-table-body">
+                  <tr><td colspan="4" class="text-muted">No candidates queried yet.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 4: FHIR R4 Pre-Registration & Telephony -->
+        <div class="specialist-card">
+          <div class="card-head">
+            <div class="card-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              <span>HL7 FHIR R4 & Family Telephony</span>
+            </div>
+            <span class="fhir-badge" id="fhir-badge-status">BUNDLE PENDING</span>
+          </div>
+          <div class="card-body">
+            <!-- FHIR Links -->
+            <div class="fhir-link-group">
+              <div class="fhir-item">
+                <span class="fhir-type">Patient:</span>
+                <button class="btn-link" id="btn-inspect-patient" disabled>None</button>
+              </div>
+              <div class="fhir-item">
+                <span class="fhir-type">Encounter:</span>
+                <button class="btn-link" id="btn-inspect-encounter" disabled>None</button>
+              </div>
+              <div class="fhir-item">
+                <span class="fhir-type">Condition:</span>
+                <button class="btn-link" id="btn-inspect-condition" disabled>None</button>
+              </div>
+            </div>
+
+            <!-- Voice Next-of-Kin Sub-card -->
+            <div class="voice-section">
+              <div class="voice-head">
+                <span class="voice-title">Next-of-Kin Telephony Status:</span>
+                <span class="badge" id="voice-call-status">IDLE</span>
+              </div>
+              <div class="medical-tags" id="medical-tags-container">
+                <span class="tag-empty">Awaiting next-of-kin allergy/history check</span>
+              </div>
+              <button class="btn-small-action" id="btn-simulate-webhook" disabled>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                <span>Simulate Caller Webhook Callback</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal: Simulate Incident -->
+  <div class="modal-overlay hidden" id="modal-simulate">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Simulate Inbound Emergency Call (108/112)</h3>
+        <button class="modal-close" id="btn-close-simulate-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-intro">Choose a pre-configured Chennai South emergency scenario or customize your own:</p>
+        
+        <div class="preset-cards-grid" id="preset-buttons-container">
+          <button class="preset-btn" data-preset="tambaram_femur_crash">
+            <span class="preset-badge red">CRITICAL TRAUMA</span>
+            <strong>Tambaram Flyover Polytrauma</strong>
+            <p>Two-wheeler vs median, femur fracture, arterial bleeding, conscious.</p>
+          </button>
+          <button class="preset-btn" data-preset="guindy_cardiac_arrest">
+            <span class="preset-badge red">HARD-SOS BYPASS</span>
+            <strong>Guindy Factory Cardiac Arrest</strong>
+            <p>Unresponsive male, CPR in progress, immediate Level 1 bypass.</p>
+          </button>
+          <button class="preset-btn" data-preset="omr_concussion">
+            <span class="preset-badge yellow">URGENT</span>
+            <strong>OMR Thoraipakkam Skid</strong>
+            <p>Motorcyclist skid, forehead laceration, dizziness, ambulatory.</p>
+          </button>
+        </div>
+
+        <div class="form-divider"><span>OR CUSTOM INCIDENT</span></div>
+
+        <div class="form-group">
+          <label for="input-custom-narrative">Verbatim Incident Description:</label>
+          <textarea id="input-custom-narrative" rows="3" placeholder="Describe patient symptoms, mechanism of injury, consciousness..."></textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="input-custom-landmark">Corridor Landmark:</label>
+            <input type="text" id="input-custom-landmark" placeholder="e.g. Chromepet Signal, Chennai">
+          </div>
+          <div class="form-group">
+            <label for="input-custom-phone">Caller Contact:</label>
+            <input type="text" id="input-custom-phone" value="+91 94441 23456">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-ghost" id="btn-cancel-simulate">Cancel</button>
+        <button class="btn-primary" id="btn-submit-simulation">Dispatch Incident</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Human Dispatcher Override -->
+  <div class="modal-overlay hidden" id="modal-override">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Human Dispatcher Override (HITL Control)</h3>
+        <button class="modal-close" id="btn-close-override-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-intro">As the human-in-the-loop controller, you can modify agent recommendations with an audit note.</p>
+        
+        <div class="form-group">
+          <label for="select-override-acuity">Override Acuity Classification:</label>
+          <select id="select-override-acuity">
+            <option value="">-- Retain AI Assessment --</option>
+            <option value="RED">RED — Immediate Life Threat</option>
+            <option value="YELLOW">YELLOW — Urgent (Within 30 mins)</option>
+            <option value="GREEN">GREEN — Non-Urgent / Delayed</option>
+            <option value="BLACK">BLACK — Expectant / Deceased</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="select-override-hospital">Re-route to Alternate Hospital:</label>
+          <select id="select-override-hospital">
+            <option value="">-- Retain Recommended Destination --</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="input-override-notes">Mandatory Clinical / Operational Reason:</label>
+          <textarea id="input-override-notes" rows="3" placeholder="e.g. Directing to higher bed capacity due to mass casualty alert."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-ghost" id="btn-cancel-override">Cancel</button>
+        <button class="btn-danger" id="btn-submit-override">Apply Controller Override</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Live FHIR JSON Inspector -->
+  <div class="modal-overlay hidden" id="modal-fhir-inspector">
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h3 id="fhir-modal-title">HL7 FHIR R4 Resource Inspector</h3>
+        <button class="modal-close" id="btn-close-fhir-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="fhir-viewer-meta">
+          <span class="badge" id="fhir-modal-badge">JSON VIEW</span>
+          <span class="font-mono text-muted" id="fhir-modal-url">http://localhost:8080/fhir</span>
+        </div>
+        <pre class="json-code-block" id="fhir-modal-json"><code>Loading resource from HAPI FHIR...</code></pre>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="btn-close-fhir-viewer">Close Inspector</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
