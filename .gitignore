@@ -22,7 +22,7 @@ htmlcov/
 *.swo
 
 # Docker / DB data
-data/hapi_data/
+# data/hapi_data/
 *.log
 
 # Models & Large Synthea Archives
