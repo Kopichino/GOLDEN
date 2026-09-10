@@ -34,9 +34,14 @@ def test_coordinator_hard_sos_bypass_flow():
     assert final_state.hospital_fhir.fhir_submission_status == "SUCCESS"
     assert final_state.hospital_fhir.fhir_bundle_id is not None
 
-    # 3. Voice trigger verified
-    assert final_state.voice_family.call_status in ["TRIGGERED", "IDLE"]
-    assert final_state.voice_family.call_id is not None
+    # 3. Voice safety contract verified
+    assert final_state.voice_family.call_status in [
+        "TRIGGERED", "IDLE", "CONSENT_REFUSED"
+    ]
+    if final_state.voice_family.call_status == "TRIGGERED":
+        assert final_state.voice_family.call_id is not None
+    else:
+        assert final_state.voice_family.call_id is None
 
 def test_coordinator_parallel_fanout_and_webhook_resumption():
     coordinator = GoldenCoordinator()

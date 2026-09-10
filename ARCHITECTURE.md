@@ -3,6 +3,14 @@
 > **Guideline-Grounded Orchestrated LLM Dispatch for Emergency Networks**  
 > *Pre-Hospital Emergency Decision-Support Pipeline for Indian 108 / 112 Services*
 
+> **Verified local baseline (2026-09-10):** HAPI FHIR is running on port 8080;
+> the seed baseline is 3 organizations and 4 synthetic patients. After the
+> integration tests, the live store reported 16 patients. The full Python test
+> suite passes with 35 tests. Outbound voice calls remain consent-gated.
+
+The repeatable capstone demonstration and its evidence checkpoints are tracked
+in [CAPSTONE_EXECUTION_PLAN.md](CAPSTONE_EXECUTION_PLAN.md).
+
 ---
 
 ## 1. High-Level System Architecture

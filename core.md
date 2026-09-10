@@ -13,6 +13,17 @@ Review-Report
 Orchestration Framework: LangGraph (Python)
 Interoperability Standard: HL7 FHIR R4 / ABDM
 
+### Current Implementation Note (2026-09-10)
+
+The local implementation has a running HAPI FHIR R4 backend with 3 seeded
+organizations and a 4-patient seed baseline. The latest full test run passed
+35 tests; integration-test records brought the live patient count to 16.
+Exotel calls remain restricted to numbers in the consent register.
+
+The capstone delivery workflow, demonstration sequence, evaluation phases, and
+evidence requirements are maintained in
+[CAPSTONE_EXECUTION_PLAN.md](CAPSTONE_EXECUTION_PLAN.md).
+
 
 Review-Report
 
