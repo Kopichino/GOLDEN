@@ -150,7 +150,7 @@ Emergency Call ──┬──> Hard-SOS Rule Engine (<0.02ms bypass) ───�
 | :--- | :--- | :---: | :--- |
 | **Phase 0** | **Foundations** |  **COMPLETED** | 5-section state schema (`schema.py`), local HAPI FHIR Docker, Synthea synthetic corridor data, architecture doc. |
 | **Phase 1** | **Core Agents & Happy Path** |  **COMPLETED** | Hard-SOS engine, Triage Agent, Hospital Matcher, LangGraph Coordinator, Audio Bridge, CLI demo script (`run_demo.py`). |
-| **Phase 2** | **Hardening & Live Dashboard** |  **COMPLETED** | Safety guardrails (`guardrails.py`), FastAPI dashboard server, modern web console (`index.html`), 31 passing unit tests. |
+| **Phase 2** | **Hardening & Live Dashboard** |  **COMPLETED** | Safety guardrails (`guardrails.py`), FastAPI dashboard server, modern web console (`index.html`), 35 passing tests. |
 | **Phase 2.3**| **Voice STT & Circuit Breaker** | ⏳ *Next Step* | Code-mixed Tamil-English Whisper STT & local Ollama circuit-breaker fallback. |
 | **Phase 3** | **Empirical Evaluation** | 🔒 *Planned* | Controlled ablations (E1–E6) and MedAgentBench triage evaluation. |
 | **Phase 4** | **Documentation & Publication**| 🔒 *Planned* | Capstone project report, paper draft, and presentation artifacts. |
@@ -271,6 +271,25 @@ Populate the local FHIR server with emergency hospitals and synthetic trauma pat
 python scripts/seed_synthea.py
 ```
 
+### Recommended Capstone Verification Flow
+
+Run this sequence for a repeatable local demonstration:
+
+```powershell
+docker compose up -d
+python scripts/seed_synthea.py
+python -m pytest -q
+python scripts/run_demo.py
+python -m uvicorn src.dashboard.server:app --host 127.0.0.1 --port 8000
+```
+
+Then verify `http://127.0.0.1:8000/api/health` reports `ONLINE` and
+`fhir_connected=true`. The complete capstone workflow and presentation phases
+are tracked in [CAPSTONE_EXECUTION_PLAN.md](CAPSTONE_EXECUTION_PLAN.md).
+
+For the panel presentation sequence and backup terminal demo, use
+[DEMO_RUNBOOK.md](DEMO_RUNBOOK.md).
+
 ### Step 5: Start the Live Dispatcher Dashboard
 Start the FastAPI server on port 8000:
 ```powershell
@@ -293,14 +312,14 @@ python -m uvicorn src.dashboard.server:app --port 8000 --reload
 
 ## 8. Testing & Verification
 
-### Run the Full Automated Test Suite (31 Tests)
+### Run the Full Automated Test Suite (35 Tests)
 Execute pytest to run all unit, security, integration, and performance tests:
 ```powershell
 python -m pytest tests/ -v
 ```
 **Expected Outcome**:
 ```
-================== 31 passed, 1 warning in 77.63s (0:01:17) ===================
+================== 35 passed, 4 warnings in 13.24s ==================
 ```
 
 ### Run the Command-Line End-to-End Demo

@@ -100,8 +100,36 @@ class TriageAgent:
             return match.group(0).strip()
         return text
 
+    def _offline_triage(self, incident_text: str) -> TriageOutput:
+        text = incident_text.lower()
+        critical_terms = ("unresponsive", "not breathing", "cardiac arrest", "arterial bleeding")
+        urgent_terms = ("severe chest", "severe pain", "fracture", "weak, rapid", "heavy bleeding")
+        minor_terms = ("minor", "superficial", "walking normally", "no dizziness", "scratch")
+
+        if any(term in text for term in critical_terms):
+            acuity, confidence = "RED", 0.98
+        elif any(term in text for term in urgent_terms):
+            acuity, confidence = "YELLOW", 0.88
+        elif any(term in text for term in minor_terms):
+            acuity, confidence = "GREEN", 0.86
+        else:
+            acuity, confidence = "YELLOW", 0.70
+
+        return TriageOutput(
+            acuity_level=acuity,
+            hard_sos=False,
+            confidence=confidence,
+            rationale="Offline keyword triage used because no hosted LLM credentials are configured.",
+            guideline_reference="AIIMS Emergency Triage Protocol / MoRTH Golden Hour Care Standard",
+            retry_count=0,
+            triage_completed_at=datetime.now(timezone.utc),
+        )
+
     def triage_incident(self, incident_text: str, location_text: str = "") -> TriageOutput:
         start_time = time.perf_counter()
+        if not settings.GEMINI_API_KEY and not settings.GROQ_API_KEY:
+            return self._offline_triage(incident_text)
+
         user_prompt = f"Incident Report: {incident_text}\nLocation Context: {location_text}"
         system_prompt = TRIAGE_SYSTEM_PROMPT
         last_error = ""

@@ -2,6 +2,12 @@
 **Guideline-Grounded Orchestrated LLM Dispatch for Emergency Networks**  
 *Decision Support for India's 108/112 Pre-Hospital Emergency Response*
 
+> **Capstone verification checkpoint (2026-09-10):** The CLI demonstration
+> completed offline triage, hospital selection, FHIR pre-registration, and
+> webhook checkpoint resumption. The dashboard reported `ONLINE` with HAPI
+> connected. See [CAPSTONE_EXECUTION_PLAN.md](CAPSTONE_EXECUTION_PLAN.md) for
+> the phase-by-phase delivery workflow.
+
 ---
 
 ## 📑 Table of Contents
@@ -150,10 +156,10 @@ In Indian 108/112 operations:
 4. In GOLDEN's schema (`src/state/schema.py`), the `IncidentLocation` model stores these coordinates:
 ```python
 class IncidentLocation(BaseModel):
-    latitude: float               # e.g., 12.9249
-    longitude: float              # e.g., 80.1472
-    address_or_landmark: str      # e.g., "Tambaram Flyover, Chennai"
-    district: Optional[str]       # "Chennai"
+    latitude: float  # e.g., 12.9249
+    longitude: float  # e.g., 80.1472
+    address_or_landmark: str  # e.g., "Tambaram Flyover, Chennai"
+    district: Optional[str]  # "Chennai"
 ```
 
 #### Why Haversine is Superior to External Maps APIs for Real-Time Ranking
@@ -401,7 +407,7 @@ You can test every capability of GOLDEN right now using your terminal and browse
 
 ---
 
-### Method 2: Running the Automated Test Suite (31 Tests)
+### Method 2: Running the Automated Test Suite (35 Tests)
 
 In PowerShell, activate your conda environment and run pytest:
 ```powershell
@@ -409,7 +415,7 @@ C:\Users\koppe\anaconda3\python.exe -m pytest tests/ -v
 ```
 **Expected Output**:
 ```
-================== 31 passed, 1 warning in 77.63s (0:01:17) ===================
+================== 35 passed, 4 warnings in 13.24s ==================
 ```
 This automatically verifies:
 - `tests/test_guardrails.py`: PII masking (Aadhaar, Phone, PAN), injection detection, clinical downgrade protection (10 tests).
