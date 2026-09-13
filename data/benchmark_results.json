@@ -1,0 +1,1372 @@
+{
+  "golden_hybrid": {
+    "total_cases": 50,
+    "accuracy_pct": 88.0,
+    "under_triage_rate_pct": 0.0,
+    "over_triage_rate_pct": 6.67,
+    "schema_failure_rate_pct": 0.0,
+    "latency_mean_ms": 4096.75,
+    "latency_median_ms": 4794.67,
+    "latency_p95_ms": 7330.65,
+    "latency_min_ms": 0.032,
+    "latency_max_ms": 7944.54,
+    "confusion_matrix": {
+      "RED": {
+        "RED": 18,
+        "YELLOW": 0,
+        "GREEN": 0,
+        "BLACK": 0
+      },
+      "YELLOW": {
+        "RED": 1,
+        "YELLOW": 13,
+        "GREEN": 4,
+        "BLACK": 0
+      },
+      "GREEN": {
+        "RED": 1,
+        "YELLOW": 0,
+        "GREEN": 11,
+        "BLACK": 0
+      },
+      "BLACK": {
+        "RED": 0,
+        "YELLOW": 0,
+        "GREEN": 0,
+        "BLACK": 2
+      }
+    },
+    "raw_results": [
+      {
+        "id": "CASE-001",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 0.04020000051241368,
+        "schema_valid": true,
+        "hard_sos": true
+      },
+      {
+        "id": "CASE-002",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 0.03310000101919286,
+        "schema_valid": true,
+        "hard_sos": true
+      },
+      {
+        "id": "CASE-003",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 0.03220000144210644,
+        "schema_valid": true,
+        "hard_sos": true
+      },
+      {
+        "id": "CASE-004",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 0.052999999752501026,
+        "schema_valid": true,
+        "hard_sos": true
+      },
+      {
+        "id": "CASE-005",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 807.7024999984133,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-006",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 0.07249999907799065,
+        "schema_valid": true,
+        "hard_sos": true
+      },
+      {
+        "id": "CASE-007",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 669.9489000020549,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-008",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 505.06289999975706,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-009",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 661.479499998677,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-010",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 679.7636000010243,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-011",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 725.7872000009229,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-012",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 0.04020000051241368,
+        "schema_valid": true,
+        "hard_sos": true
+      },
+      {
+        "id": "CASE-013",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 1694.81160000214,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-014",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 5064.793800000189,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-015",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 4424.885699998413,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-016",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 4614.010699999199,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-017",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 4794.671600000584,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-018",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 4711.680899999919,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-019",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 6788.979999997537,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-020",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 5915.390699999989,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-021",
+        "ground_truth": "YELLOW",
+        "predicted": "GREEN",
+        "is_correct": false,
+        "latency_ms": 7811.433100003342,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-022",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 5163.831300000311,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-023",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 7944.537399998808,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-024",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 6021.026499998698,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-025",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 6316.120700001193,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-026",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 6874.593900000036,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-027",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 5007.371300001978,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-028",
+        "ground_truth": "YELLOW",
+        "predicted": "GREEN",
+        "is_correct": false,
+        "latency_ms": 5139.7856999974465,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-029",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 5686.925699999847,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-030",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 6827.972999999474,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-031",
+        "ground_truth": "YELLOW",
+        "predicted": "GREEN",
+        "is_correct": false,
+        "latency_ms": 5871.778499997163,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-032",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 6015.776100000949,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-033",
+        "ground_truth": "YELLOW",
+        "predicted": "GREEN",
+        "is_correct": false,
+        "latency_ms": 5854.144599998108,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-034",
+        "ground_truth": "YELLOW",
+        "predicted": "RED",
+        "is_correct": false,
+        "latency_ms": 6257.911900000181,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-035",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 6109.6897999996145,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-036",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 7330.650500000047,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-037",
+        "ground_truth": "GREEN",
+        "predicted": "GREEN",
+        "is_correct": true,
+        "latency_ms": 6826.9730000029085,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-038",
+        "ground_truth": "GREEN",
+        "predicted": "RED",
+        "is_correct": false,
+        "latency_ms": 0.03479999941191636,
+        "schema_valid": true,
+        "hard_sos": true
+      },
+      {
+        "id": "CASE-039",
+        "ground_truth": "GREEN",
+        "predicted": "GREEN",
+        "is_correct": true,
+        "latency_ms": 3858.645299998898,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-040",
+        "ground_truth": "GREEN",
+        "predicted": "GREEN",
+        "is_correct": true,
+        "latency_ms": 4750.5788999988,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-041",
+        "ground_truth": "GREEN",
+        "predicted": "GREEN",
+        "is_correct": true,
+        "latency_ms": 4728.415699999459,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-042",
+        "ground_truth": "GREEN",
+        "predicted": "GREEN",
+        "is_correct": true,
+        "latency_ms": 3780.09739999834,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-043",
+        "ground_truth": "GREEN",
+        "predicted": "GREEN",
+        "is_correct": true,
+        "latency_ms": 3974.976900000911,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-044",
+        "ground_truth": "GREEN",
+        "predicted": "GREEN",
+        "is_correct": true,
+        "latency_ms": 4766.187900000659,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-045",
+        "ground_truth": "GREEN",
+        "predicted": "GREEN",
+        "is_correct": true,
+        "latency_ms": 5202.753099998517,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-046",
+        "ground_truth": "GREEN",
+        "predicted": "GREEN",
+        "is_correct": true,
+        "latency_ms": 4733.906299999944,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-047",
+        "ground_truth": "GREEN",
+        "predicted": "GREEN",
+        "is_correct": true,
+        "latency_ms": 5745.539100000315,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-048",
+        "ground_truth": "GREEN",
+        "predicted": "GREEN",
+        "is_correct": true,
+        "latency_ms": 5157.352599999285,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-049",
+        "ground_truth": "BLACK",
+        "predicted": "BLACK",
+        "is_correct": true,
+        "latency_ms": 3993.510000000242,
+        "schema_valid": true,
+        "hard_sos": false
+      },
+      {
+        "id": "CASE-050",
+        "ground_truth": "BLACK",
+        "predicted": "BLACK",
+        "is_correct": true,
+        "latency_ms": 5025.6969000001845,
+        "schema_valid": true,
+        "hard_sos": false
+      }
+    ]
+  },
+  "raw_llm_zero_shot": {
+    "total_cases": 50,
+    "accuracy_pct": 86.0,
+    "under_triage_rate_pct": 0.0,
+    "over_triage_rate_pct": 16.67,
+    "schema_failure_rate_pct": 100.0,
+    "latency_mean_ms": 2129.15,
+    "latency_median_ms": 2182.07,
+    "latency_p95_ms": 3900.45,
+    "latency_min_ms": 599.217,
+    "latency_max_ms": 4147.37,
+    "confusion_matrix": {
+      "RED": {
+        "RED": 18,
+        "YELLOW": 0,
+        "GREEN": 0,
+        "BLACK": 0
+      },
+      "YELLOW": {
+        "RED": 5,
+        "YELLOW": 11,
+        "GREEN": 2,
+        "BLACK": 0
+      },
+      "GREEN": {
+        "RED": 0,
+        "YELLOW": 0,
+        "GREEN": 12,
+        "BLACK": 0
+      },
+      "BLACK": {
+        "RED": 0,
+        "YELLOW": 0,
+        "GREEN": 0,
+        "BLACK": 2
+      }
+    },
+    "raw_results": [
+      {
+        "id": "CASE-001",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 733.8115999991714,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-002",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 654.39399999741,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-003",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 816.1051999995834,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-004",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 737.3038000005181,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-005",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 728.0570000002626,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-006",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 610.3269999985059,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-007",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 725.7457000014256,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-008",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 1083.7090999993961,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-009",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 706.6180999972858,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-010",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 769.3527000010363,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-011",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 734.1795000029379,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-012",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 624.87990000227,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-013",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 2705.144100000325,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-014",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 2733.02429999967,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-015",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 3115.6708000016806,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-016",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 3793.490899999597,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-017",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 2852.629099998012,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-018",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 2814.7438000014517,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-019",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 2841.7461999997613,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-020",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 4076.0054999991553,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-021",
+        "ground_truth": "YELLOW",
+        "predicted": "GREEN",
+        "is_correct": false,
+        "latency_ms": 3781.718700000056,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-022",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 4147.366000001057,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-023",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 824.9480000013136,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-024",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 3882.7253000017663,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-025",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 3298.5427000021446,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-026",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 3900.454599999648,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-027",
+        "ground_truth": "YELLOW",
+        "predicted": "RED",
+        "is_correct": false,
+        "latency_ms": 2831.279699999868,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-028",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 3896.7790999995486,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-029",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 2182.0693999979994,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-030",
+        "ground_truth": "YELLOW",
+        "predicted": "RED",
+        "is_correct": false,
+        "latency_ms": 753.7161000000197,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-031",
+        "ground_truth": "YELLOW",
+        "predicted": "GREEN",
+        "is_correct": false,
+        "latency_ms": 2628.325399997266,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-032",
+        "ground_truth": "YELLOW",
+        "predicted": "RED",
+        "is_correct": false,
+        "latency_ms": 2815.7251000011456,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-033",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 3113.0427999996755,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-034",
+        "ground_truth": "YELLOW",
+        "predicted": "RED",
+        "is_correct": false,
+        "latency_ms": 1786.7072000008193,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-035",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 3071.535799997946,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-036",
+        "ground_truth": "YELLOW",
+        "predicted": "RED",
+        "is_correct": false,
+        "latency_ms": 1860.6283000008261,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-037",
+        "ground_truth": "GREEN",
+        "predicted": "GREEN",
+        "is_correct": true,
+        "latency_ms": 2009.8963000018557,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-038",
+        "ground_truth": "GREEN",
+        "predicted": "GREEN",
+        "is_correct": true,
+        "latency_ms": 3040.6122999993386,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-039",
+        "ground_truth": "GREEN",
+        "predicted": "GREEN",
+        "is_correct": true,
+        "latency_ms": 3736.440999997285,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-040",
+        "ground_truth": "GREEN",
+        "predicted": "GREEN",
+        "is_correct": true,
+        "latency_ms": 1709.502199999406,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-041",
+        "ground_truth": "GREEN",
+        "predicted": "GREEN",
+        "is_correct": true,
+        "latency_ms": 2759.954500001186,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-042",
+        "ground_truth": "GREEN",
+        "predicted": "GREEN",
+        "is_correct": true,
+        "latency_ms": 3791.73979999905,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-043",
+        "ground_truth": "GREEN",
+        "predicted": "GREEN",
+        "is_correct": true,
+        "latency_ms": 2479.6969999988505,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-044",
+        "ground_truth": "GREEN",
+        "predicted": "GREEN",
+        "is_correct": true,
+        "latency_ms": 663.1464999991294,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-045",
+        "ground_truth": "GREEN",
+        "predicted": "GREEN",
+        "is_correct": true,
+        "latency_ms": 633.7510000012117,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-046",
+        "ground_truth": "GREEN",
+        "predicted": "GREEN",
+        "is_correct": true,
+        "latency_ms": 1807.779800001299,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-047",
+        "ground_truth": "GREEN",
+        "predicted": "GREEN",
+        "is_correct": true,
+        "latency_ms": 753.0337999996846,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-048",
+        "ground_truth": "GREEN",
+        "predicted": "GREEN",
+        "is_correct": true,
+        "latency_ms": 599.2170999998052,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-049",
+        "ground_truth": "BLACK",
+        "predicted": "BLACK",
+        "is_correct": true,
+        "latency_ms": 1673.1517999978678,
+        "schema_valid": false
+      },
+      {
+        "id": "CASE-050",
+        "ground_truth": "BLACK",
+        "predicted": "BLACK",
+        "is_correct": true,
+        "latency_ms": 2166.9975000004342,
+        "schema_valid": false
+      }
+    ]
+  },
+  "pure_heuristic": {
+    "total_cases": 50,
+    "accuracy_pct": 52.0,
+    "under_triage_rate_pct": 72.22,
+    "over_triage_rate_pct": 0.0,
+    "schema_failure_rate_pct": 0.0,
+    "latency_mean_ms": 0.01,
+    "latency_median_ms": 0.01,
+    "latency_p95_ms": 0.01,
+    "latency_min_ms": 0.002,
+    "latency_max_ms": 0.02,
+    "confusion_matrix": {
+      "RED": {
+        "RED": 5,
+        "YELLOW": 12,
+        "GREEN": 1,
+        "BLACK": 0
+      },
+      "YELLOW": {
+        "RED": 0,
+        "YELLOW": 17,
+        "GREEN": 1,
+        "BLACK": 0
+      },
+      "GREEN": {
+        "RED": 0,
+        "YELLOW": 10,
+        "GREEN": 2,
+        "BLACK": 0
+      },
+      "BLACK": {
+        "RED": 0,
+        "YELLOW": 0,
+        "GREEN": 0,
+        "BLACK": 2
+      }
+    },
+    "raw_results": [
+      {
+        "id": "CASE-001",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 0.004900000931229442,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-002",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 0.0037999998312443495,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-003",
+        "ground_truth": "RED",
+        "predicted": "YELLOW",
+        "is_correct": false,
+        "latency_ms": 0.007899998308857903,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-004",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 0.006500002200482413,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-005",
+        "ground_truth": "RED",
+        "predicted": "YELLOW",
+        "is_correct": false,
+        "latency_ms": 0.019999999494757503,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-006",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 0.00660000296193175,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-007",
+        "ground_truth": "RED",
+        "predicted": "YELLOW",
+        "is_correct": false,
+        "latency_ms": 0.010700001439545304,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-008",
+        "ground_truth": "RED",
+        "predicted": "YELLOW",
+        "is_correct": false,
+        "latency_ms": 0.008999999408842996,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-009",
+        "ground_truth": "RED",
+        "predicted": "YELLOW",
+        "is_correct": false,
+        "latency_ms": 0.009800001862458885,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-010",
+        "ground_truth": "RED",
+        "predicted": "YELLOW",
+        "is_correct": false,
+        "latency_ms": 0.011300002370262519,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-011",
+        "ground_truth": "RED",
+        "predicted": "YELLOW",
+        "is_correct": false,
+        "latency_ms": 0.013799999578623101,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-012",
+        "ground_truth": "RED",
+        "predicted": "RED",
+        "is_correct": true,
+        "latency_ms": 0.005199999577598646,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-013",
+        "ground_truth": "RED",
+        "predicted": "YELLOW",
+        "is_correct": false,
+        "latency_ms": 0.008699997124494985,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-014",
+        "ground_truth": "RED",
+        "predicted": "YELLOW",
+        "is_correct": false,
+        "latency_ms": 0.014799999917158857,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-015",
+        "ground_truth": "RED",
+        "predicted": "YELLOW",
+        "is_correct": false,
+        "latency_ms": 0.012900000001536682,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-016",
+        "ground_truth": "RED",
+        "predicted": "GREEN",
+        "is_correct": false,
+        "latency_ms": 0.012299999070819467,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-017",
+        "ground_truth": "RED",
+        "predicted": "YELLOW",
+        "is_correct": false,
+        "latency_ms": 0.011899999663000926,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-018",
+        "ground_truth": "RED",
+        "predicted": "YELLOW",
+        "is_correct": false,
+        "latency_ms": 0.007700000423938036,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-019",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 0.010600000678095967,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-020",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 0.014299999747890979,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-021",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 0.010100000508828089,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-022",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 0.012400003470247611,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-023",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 0.009900002623908222,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-024",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 0.01630000042496249,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-025",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 0.01170000177808106,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-026",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 0.008600000001024455,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-027",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 0.013999997463542968,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-028",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 0.009100000170292333,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-029",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 0.007499998901039362,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-030",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 0.014799999917158857,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-031",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 0.009800001862458885,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-032",
+        "ground_truth": "YELLOW",
+        "predicted": "GREEN",
+        "is_correct": false,
+        "latency_ms": 0.012000000424450263,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-033",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 0.009899998985929415,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-034",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 0.01049999991664663,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-035",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 0.011000000085914508,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-036",
+        "ground_truth": "YELLOW",
+        "predicted": "YELLOW",
+        "is_correct": true,
+        "latency_ms": 0.010900002962443978,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-037",
+        "ground_truth": "GREEN",
+        "predicted": "YELLOW",
+        "is_correct": false,
+        "latency_ms": 0.007700000423938036,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-038",
+        "ground_truth": "GREEN",
+        "predicted": "GREEN",
+        "is_correct": true,
+        "latency_ms": 0.013999997463542968,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-039",
+        "ground_truth": "GREEN",
+        "predicted": "YELLOW",
+        "is_correct": false,
+        "latency_ms": 0.009000003046821803,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-040",
+        "ground_truth": "GREEN",
+        "predicted": "YELLOW",
+        "is_correct": false,
+        "latency_ms": 0.007099999493220821,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-041",
+        "ground_truth": "GREEN",
+        "predicted": "GREEN",
+        "is_correct": true,
+        "latency_ms": 0.011899999663000926,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-042",
+        "ground_truth": "GREEN",
+        "predicted": "YELLOW",
+        "is_correct": false,
+        "latency_ms": 0.011599997378652915,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-043",
+        "ground_truth": "GREEN",
+        "predicted": "YELLOW",
+        "is_correct": false,
+        "latency_ms": 0.01340000017080456,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-044",
+        "ground_truth": "GREEN",
+        "predicted": "YELLOW",
+        "is_correct": false,
+        "latency_ms": 0.01089999932446517,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-045",
+        "ground_truth": "GREEN",
+        "predicted": "YELLOW",
+        "is_correct": false,
+        "latency_ms": 0.00670000008540228,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-046",
+        "ground_truth": "GREEN",
+        "predicted": "YELLOW",
+        "is_correct": false,
+        "latency_ms": 0.013900000340072438,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-047",
+        "ground_truth": "GREEN",
+        "predicted": "YELLOW",
+        "is_correct": false,
+        "latency_ms": 0.009999999747378752,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-048",
+        "ground_truth": "GREEN",
+        "predicted": "YELLOW",
+        "is_correct": false,
+        "latency_ms": 0.011899999663000926,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-049",
+        "ground_truth": "BLACK",
+        "predicted": "BLACK",
+        "is_correct": true,
+        "latency_ms": 0.0022000021999701858,
+        "schema_valid": true
+      },
+      {
+        "id": "CASE-050",
+        "ground_truth": "BLACK",
+        "predicted": "BLACK",
+        "is_correct": true,
+        "latency_ms": 0.0021000014385208488,
+        "schema_valid": true
+      }
+    ]
+  }
+}

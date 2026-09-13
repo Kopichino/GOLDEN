@@ -39,20 +39,20 @@ class TriageAgent:
         self.max_retries = settings.SCHEMA_MAX_RETRIES
 
     def _call_llm(self, prompt: str, system_prompt: str) -> str:
-        # Prioritize Gemini for ultra-low latency direct JSON, fallback to Groq
-        providers = [self.provider]
-        if "gemini" not in providers:
-            providers.insert(0, "gemini")
-        if "groq" not in providers:
+        # Prioritize Groq (openai/gpt-oss-20b) for high-speed sub-second JSON inference, fallback to Gemini
+        providers = []
+        if settings.GROQ_API_KEY:
             providers.append("groq")
+        if settings.GEMINI_API_KEY:
+            providers.append("gemini")
 
         last_exc = None
         for p in providers:
             try:
-                if p == "gemini" and settings.GEMINI_API_KEY:
-                    return self._call_gemini(prompt, system_prompt)
-                elif p == "groq" and settings.GROQ_API_KEY:
+                if p == "groq" and settings.GROQ_API_KEY:
                     return self._call_groq(prompt, system_prompt)
+                elif p == "gemini" and settings.GEMINI_API_KEY:
+                    return self._call_gemini(prompt, system_prompt)
             except Exception as e:
                 last_exc = e
                 continue
@@ -63,13 +63,13 @@ class TriageAgent:
         from groq import Groq
         client = Groq(api_key=settings.GROQ_API_KEY)
         completion = client.chat.completions.create(
-            model="qwen/qwen3.6-27b",
+            model="openai/gpt-oss-20b",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.1,
-            max_tokens=350,
+            max_tokens=600,
         )
         return completion.choices[0].message.content.strip()
 

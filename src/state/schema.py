@@ -49,7 +49,21 @@ class TriageOutput(BaseModel):
 class HospitalCandidate(BaseModel):
     hospital_id: str = Field(..., description="Unique hospital identifier")
     name: str = Field(..., description="Hospital facility name")
-    distance_km: float = Field(..., ge=0.0, description="Distance from incident in kilometers")
+    distance_km: float = Field(..., ge=0.0, description="Straight-line Haversine distance in kilometers")
+    driving_distance_km: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        description="Real road-network driving distance via OSRM in kilometers"
+    )
+    eta_minutes: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        description="Estimated road-network driving time in minutes"
+    )
+    routing_source: Literal["OSRM", "HAVERSINE_ESTIMATED"] = Field(
+        default="HAVERSINE_ESTIMATED",
+        description="Source used to compute road distance and ETA"
+    )
     trauma_level: Literal["LEVEL_1", "LEVEL_2", "LEVEL_3", "DISTRICT_HOSPITAL"]
     specialties_available: List[str] = Field(default_factory=list, description="e.g. neurosurgery, ortho")
     available_icu_beds: int = Field(default=0, ge=0)
