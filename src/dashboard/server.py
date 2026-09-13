@@ -2,7 +2,7 @@
 
 Provides:
 - REST API for listing cases, simulating emergency scenarios, and manual dispatcher overrides.
-- Real-time Server-Sent Events (SSE) streaming live multi-agent pipeline events.
+- Real-time Server-Sent Events (SSE) streaming live orchestrator workflow events.
 - FHIR resource proxy to inspect live Patient, Encounter, and Condition resources from local HAPI FHIR.
 - Serves the modern, responsive dispatcher interface.
 """
@@ -30,7 +30,7 @@ from src.state.schema import (
     IncidentLocation,
     ControlAudit,
 )
-from src.agents.coordinator import GoldenCoordinator
+from src.agents.coordinator import GoldenOrchestrator, GoldenCoordinator
 from src.safety.guardrails import PIISanitizer, PromptInjectionDetector
 
 app = FastAPI(title="GOLDEN Emergency Dispatcher Console", version="1.0.0")
@@ -161,6 +161,7 @@ def list_cases():
             "call_status": state.voice_family.call_status,
             "execution_stage": state.control_audit.execution_stage,
             "fhir_bundle_id": state.hospital_fhir.fhir_bundle_id,
+            "ranking_reason": state.hospital_fhir.ranking_reason,
         })
     return {"cases": items}
 
@@ -293,21 +294,13 @@ def human_override(case_id: str, req: OverrideRequest):
     if req.acuity_level:
         old_acuity = state.triage.acuity_level
         state.triage.acuity_level = req.acuity_level # type: ignore
-        state.add_audit_entry(
-            agent_name="human_dispatcher",
-            action="acuity_override",
-            details={"old": old_acuity, "new": req.acuity_level, "notes": req.dispatcher_notes}
-        )
+        state.record_human_override("acuity_level", old_acuity, req.acuity_level, req.dispatcher_notes)
 
     if req.selected_hospital_id and req.selected_hospital_name:
-        old_hosp = state.hospital_fhir.selected_hospital_name
+        old_hosp = state.hospital_fhir.selected_hospital_name or state.hospital_fhir.selected_hospital_id
         state.hospital_fhir.selected_hospital_id = req.selected_hospital_id
         state.hospital_fhir.selected_hospital_name = req.selected_hospital_name
-        state.add_audit_entry(
-            agent_name="human_dispatcher",
-            action="hospital_override",
-            details={"old": old_hosp, "new": req.selected_hospital_name, "notes": req.dispatcher_notes}
-        )
+        state.record_human_override("selected_hospital", old_hosp, req.selected_hospital_name, req.dispatcher_notes)
 
     broadcast_event({
         "timestamp": datetime.now(timezone.utc).isoformat(),

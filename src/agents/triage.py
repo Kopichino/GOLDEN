@@ -125,9 +125,15 @@ class TriageAgent:
             triage_completed_at=datetime.now(timezone.utc),
         )
 
+    def _has_valid_key(self, key: Optional[str]) -> bool:
+        if not key:
+            return False
+        k = key.strip().lower()
+        return not (k.startswith("your_") or "placeholder" in k or k == "")
+
     def triage_incident(self, incident_text: str, location_text: str = "") -> TriageOutput:
         start_time = time.perf_counter()
-        if not settings.GEMINI_API_KEY and not settings.GROQ_API_KEY:
+        if not self._has_valid_key(settings.GEMINI_API_KEY) and not self._has_valid_key(settings.GROQ_API_KEY):
             return self._offline_triage(incident_text)
 
         user_prompt = f"Incident Report: {incident_text}\nLocation Context: {location_text}"
@@ -144,7 +150,11 @@ class TriageAgent:
             else:
                 retry_prompt = user_prompt
 
-            raw_response = self._call_llm(retry_prompt, system_prompt)
+            try:
+                raw_response = self._call_llm(retry_prompt, system_prompt)
+            except Exception as e:
+                # Degrade gracefully to offline triage if all hosted providers fail or credentials are unauthorized
+                return self._offline_triage(incident_text)
             cleaned = self._clean_json_str(raw_response)
 
             try:

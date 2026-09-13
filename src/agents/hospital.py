@@ -20,7 +20,14 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
     return round(r * c, 2)
 
-class HospitalAgent:
+
+class HospitalDiscovery:
+    """Stage 1: Spatial and Capability Discovery Service.
+    
+    Queries FHIR Organization resources and hospital capability extensions
+    independent of clinical acuity reasoning.
+    """
+
     def __init__(self, fhir_client: Optional[FhirClient] = None):
         self.client = fhir_client or FhirClient()
 
@@ -55,12 +62,12 @@ class HospitalAgent:
                 caps["longitude"] = float(ext.get("valueDecimal", 80.2707))
         return caps
 
-    def rank_hospitals(
+    def discover_candidates(
         self,
         incident_lat: float,
-        incident_lon: float,
-        acuity_level: str
+        incident_lon: float
     ) -> List[HospitalCandidate]:
+        """Discover nearby candidate facilities and their real-time capabilities via FHIR."""
         raw_orgs = self.query_candidate_hospitals()
         candidates: List[HospitalCandidate] = []
 
@@ -74,45 +81,95 @@ class HospitalAgent:
             icu_beds = caps["icu_beds"]
             er_beds = caps["er_beds"]
 
-            # Multi-factorial scoring: Acuity suitability + bed availability - distance penalty
-            score = 0.0
-            if acuity_level == "RED":
-                if trauma_level == "LEVEL_1":
-                    score += 60.0
-                elif trauma_level == "LEVEL_2":
-                    score += 30.0
-                score += min(icu_beds * 4.0, 30.0)
-            elif acuity_level == "YELLOW":
-                if trauma_level in ["LEVEL_1", "LEVEL_2"]:
-                    score += 40.0
-                score += min(er_beds * 3.0, 30.0)
-            else: # GREEN / default
-                score += min(er_beds * 2.0, 30.0)
-
-            score -= (dist_km * 2.5)
-
             candidates.append(
                 HospitalCandidate(
                     hospital_id=org_id,
                     name=org_name,
                     distance_km=dist_km,
-                    trauma_level=trauma_level, # type: ignore
+                    trauma_level=trauma_level,  # type: ignore
                     specialties_available=["trauma", "ortho", "icu"],
                     available_icu_beds=icu_beds,
                     available_er_beds=er_beds,
-                    score=round(score, 2)
+                    score=0.0
                 )
             )
 
-        candidates.sort(key=lambda x: x.score, reverse=True)
+        candidates.sort(key=lambda x: x.distance_km)
         return candidates
+
+
+class HospitalMatcher:
+    """Stage 2: Deterministic Clinical Acuity Multi-Factor Matching Engine.
+    
+    Ranks discovered facilities using validated clinical triage acuity, trauma level,
+    bed availability, and spatial distance.
+    """
+
+    def __init__(self):
+        pass
+
+    def score_candidate(self, c: HospitalCandidate, acuity_level: str) -> float:
+        score = 0.0
+        if acuity_level == "RED":
+            if c.trauma_level == "LEVEL_1":
+                score += 60.0
+            elif c.trauma_level == "LEVEL_2":
+                score += 30.0
+            score += min(c.available_icu_beds * 4.0, 30.0)
+        elif acuity_level == "YELLOW":
+            if c.trauma_level in ["LEVEL_1", "LEVEL_2"]:
+                score += 40.0
+            score += min(c.available_er_beds * 3.0, 30.0)
+        else:  # GREEN / BLACK / default
+            score += min(c.available_er_beds * 2.0, 30.0)
+
+        score -= (c.distance_km * 2.5)
+        return round(score, 2)
+
+    def match_and_rank(
+        self,
+        candidates: List[HospitalCandidate],
+        acuity_level: str
+    ) -> Tuple[List[HospitalCandidate], str]:
+        """Deterministically match and rank candidate facilities using validated triage acuity."""
+        scored_candidates: List[HospitalCandidate] = []
+
+        for c in candidates:
+            score = self.score_candidate(c, acuity_level)
+            updated = c.model_copy()
+            updated.score = score
+            scored_candidates.append(updated)
+
+        scored_candidates.sort(key=lambda x: x.score, reverse=True)
+
+        top = scored_candidates[0] if scored_candidates else None
+        if top:
+            reason = (
+                f"Selected {top.name} for {acuity_level} acuity: "
+                f"Trauma {top.trauma_level}, {top.available_icu_beds} ICU beds, "
+                f"{top.available_er_beds} ER beds, distance {top.distance_km:.1f}km (Score: {top.score})"
+            )
+        else:
+            reason = "No hospital candidates available in the registry"
+
+        return scored_candidates, reason
+
+
+class FhirToolService:
+    """Stage 3: FHIR Pre-Registration Tool Service.
+    
+    Submits structured FHIR transaction bundles (Patient, Encounter, Condition)
+    to HAPI FHIR server.
+    """
+
+    def __init__(self, fhir_client: Optional[FhirClient] = None):
+        self.client = fhir_client or FhirClient()
 
     def pre_register_patient(
         self,
         state: GoldenCaseState,
         selected_hospital: HospitalCandidate
     ) -> Tuple[str, str, str, str]:
-        # Turn 3: Submit FHIR Transaction Bundle
         patient_name = f"Unidentified Trauma Victim ({state.input_data.case_id})"
         caller_phone = state.input_data.caller_phone
         acuity = state.triage.acuity_level or "RED"
@@ -141,22 +198,75 @@ class HospitalAgent:
 
         return bundle_id, patient_id, encounter_id, condition_id
 
+
+class HospitalAgent:
+    """Composing Facade for Hospital Discovery, Matching, and FHIR Pre-Registration.
+    
+    Provides 100% backward compatibility for all existing methods and tests.
+    """
+
+    def __init__(self, fhir_client: Optional[FhirClient] = None):
+        self.client = fhir_client or FhirClient()
+        self.discovery = HospitalDiscovery(self.client)
+        self.matcher = HospitalMatcher()
+        self.fhir_service = FhirToolService(self.client)
+
+    def query_candidate_hospitals(self) -> List[Dict[str, Any]]:
+        return self.discovery.query_candidate_hospitals()
+
+    def get_hospital_capabilities(self, org_id: str) -> Dict[str, Any]:
+        return self.discovery.get_hospital_capabilities(org_id)
+
+    def discover_candidates(
+        self,
+        incident_lat: float,
+        incident_lon: float
+    ) -> List[HospitalCandidate]:
+        return self.discovery.discover_candidates(incident_lat, incident_lon)
+
+    def match_and_rank(
+        self,
+        candidates: List[HospitalCandidate],
+        acuity_level: str
+    ) -> Tuple[List[HospitalCandidate], str]:
+        return self.matcher.match_and_rank(candidates, acuity_level)
+
+    def rank_hospitals(
+        self,
+        incident_lat: float,
+        incident_lon: float,
+        acuity_level: str
+    ) -> List[HospitalCandidate]:
+        """Convenience method combining discovery and matching (for backward compatibility)."""
+        raw = self.discover_candidates(incident_lat, incident_lon)
+        ranked, _ = self.match_and_rank(raw, acuity_level)
+        return ranked
+
+    def pre_register_patient(
+        self,
+        state: GoldenCaseState,
+        selected_hospital: HospitalCandidate
+    ) -> Tuple[str, str, str, str]:
+        return self.fhir_service.pre_register_patient(state, selected_hospital)
+
     def run(self, state: GoldenCaseState) -> GoldenCaseState:
         acuity = state.triage.acuity_level or ("RED" if state.triage.hard_sos else "YELLOW")
-        candidates = self.rank_hospitals(
+        raw = self.discover_candidates(
             incident_lat=state.input_data.location.latitude,
-            incident_lon=state.input_data.location.longitude,
-            acuity_level=acuity
+            incident_lon=state.input_data.location.longitude
         )
+        candidates, reason = self.match_and_rank(raw, acuity)
 
         if not candidates:
-            state.record_error("hospital_agent", "NoHospitalsFound", "No candidate hospitals available in registry")
+            state.record_error("hospital_workflow", "NoHospitalsFound", "No candidate hospitals available in registry")
             return state
 
         selected = candidates[0]
+        state.hospital_fhir.raw_candidates = raw
         state.hospital_fhir.candidate_hospitals = candidates
         state.hospital_fhir.selected_hospital_id = selected.hospital_id
         state.hospital_fhir.selected_hospital_name = selected.name
+        state.hospital_fhir.ranking_reason = reason
         state.hospital_fhir.bed_status = "REQUESTED"
 
         # Pre-register patient on FHIR server
@@ -170,12 +280,13 @@ class HospitalAgent:
             state.hospital_fhir.fhir_submission_timestamp = datetime.now(timezone.utc)
             state.hospital_fhir.bed_status = "CONFIRMED"
             state.add_audit_entry(
-                agent_name="hospital_agent",
+                agent_name="hospital_workflow",
                 action="fhir_pre_registration_completed",
                 details={
                     "selected_hospital": selected.name,
                     "distance_km": selected.distance_km,
                     "score": selected.score,
+                    "ranking_reason": reason,
                     "patient_id": p_id,
                     "encounter_id": enc_id,
                     "condition_id": cond_id
@@ -183,6 +294,6 @@ class HospitalAgent:
             )
         except Exception as e:
             state.hospital_fhir.fhir_submission_status = "FAILED"
-            state.record_error("hospital_agent", "FhirSubmissionError", str(e))
+            state.record_error("hospital_workflow", "FhirSubmissionError", str(e))
 
         return state

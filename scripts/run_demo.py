@@ -9,7 +9,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from src.agents.coordinator import GoldenCoordinator
+from src.agents.coordinator import GoldenOrchestrator, GoldenCoordinator
 from src.state.schema import GoldenCaseState, CaseIdentityInput, IncidentLocation, ControlAudit
 
 DEFAULT_SAMPLE_REPORT = (
@@ -29,10 +29,10 @@ def run_happy_path_demo(
     thread_id = f"thread-{case_id}"
 
     print("=" * 80)
-    print("   GOLDEN: Emergency Dispatch Decision-Support Pipeline (Phase 1 Demo)")
+    print("   GOLDEN: Emergency Dispatch Decision-Support Pipeline (Target Architecture)")
     print("   Guideline-Grounded Orchestrated LLM Dispatch for Emergency Networks")
     print("=" * 80)
-    print(f"\n[1] CASE INGESTION")
+    print(f"\n[1] CASE INGESTION & PII NORMALIZATION")
     print(f"  * Case ID:     {case_id}")
     print(f"  * Caller:      {caller_phone}")
     print(f"  * Location:    {landmark} ({latitude}, {longitude})")
@@ -55,56 +55,60 @@ def run_happy_path_demo(
         )
     )
 
-    coordinator = GoldenCoordinator()
+    orchestrator = GoldenOrchestrator()
 
-    print("\n[2] ORCHESTRATION & AGENT EXECUTION")
-    print("  * Starting LangGraph workflow with durable MemorySaver checkpointer...")
-    dispatched_state = coordinator.dispatch_case(initial_state)
+    print("\n[2] WORKFLOW ORCHESTRATION & DEPENDENCY EXECUTION")
+    print("  * Starting LangGraph StateGraph with durable MemorySaver checkpointer...")
+    dispatched_state = orchestrator.dispatch_case(initial_state)
 
-    # 1. Hard-SOS
-    print("\n--- Hard-SOS Rule Engine ---")
+    # 1. Hard-SOS Safety Engine
+    print("\n--- Hard-SOS Safety Engine (Deterministic Regex) ---")
     if dispatched_state.triage.hard_sos:
-        print("  [CRITICAL BYPASS] Hard-SOS Pattern Triggered!")
+        print("  [CRITICAL BYPASS] Immediate life-threat pattern matched!")
         print(f"  * Triggers:    {dispatched_state.triage.hard_sos_triggers}")
-        print(f"  * Routing:     Direct bypass to Hospital Agent (< 1ms)")
+        print(f"  * Routing:     Direct RED escalation bypass around LLM inference")
     else:
         print("  [CLEAR] No deterministic life-threat pattern matched.")
-        print("  * Routing:     Fanned out in parallel to Triage Agent + Hospital Agent")
+        print("  * Routing:     Parallel fan-out to Triage Agent + Hospital Discovery")
 
-    # 2. Triage Output
-    print("\n--- Guideline-Grounded Triage Agent ---")
+    # 2. Triage Agent Output
+    print("\n--- Guideline-Grounded Triage Agent (LLM Reasoning) ---")
     print(f"  * Acuity Level:   [{dispatched_state.triage.acuity_level}]")
     print(f"  * Confidence:     {dispatched_state.triage.confidence * 100:.1f}%")
     print(f"  * Clinical Logic: {dispatched_state.triage.rationale}")
     print(f"  * Protocol Cited: {dispatched_state.triage.guideline_reference}")
     print(f"  * Schema Retries: {dispatched_state.triage.retry_count}")
 
-    # 3. Hospital & Bed Agent
-    print("\n--- Hospital & Bed Agent (FHIR R4) ---")
-    print(f"  * Selected Facility: {dispatched_state.hospital_fhir.selected_hospital_name}")
-    print(f"  * Bed Reservation:   {dispatched_state.hospital_fhir.bed_status}")
-    print("  * Candidate Ranking:")
+    # 3. Hospital Discovery & Matching
+    print("\n--- Hospital Discovery & Acuity Matching (2-Stage Workflow) ---")
+    print(f"  * Discovered:     {len(dispatched_state.hospital_fhir.raw_candidates)} corridor facilities queried via FHIR")
+    print(f"  * Selected:       {dispatched_state.hospital_fhir.selected_hospital_name}")
+    print(f"  * Bed Status:     {dispatched_state.hospital_fhir.bed_status}")
+    print(f"  * Machine Reason: {dispatched_state.hospital_fhir.ranking_reason}")
+    print("  * Acuity-Ranked Facilities:")
     for i, c in enumerate(dispatched_state.hospital_fhir.candidate_hospitals[:3], 1):
         print(f"     {i}. {c.name:45} | Dist: {c.distance_km:5.1f}km | Trauma: {c.trauma_level:10} | Score: {c.score}")
 
-    print("\n--- HL7 FHIR R4 Pre-Registration Bundle ---")
+    # 4. FHIR Tool Layer
+    print("\n--- HL7 FHIR R4 Tool Layer (Atomic Transaction Bundle) ---")
     print(f"  * Submission Status: {dispatched_state.hospital_fhir.fhir_submission_status}")
     print(f"  * Bundle ID:         {dispatched_state.hospital_fhir.fhir_bundle_id}")
     print(f"  * Patient Resource:  http://localhost:8080/fhir/Patient/{dispatched_state.hospital_fhir.fhir_patient_id}")
     print(f"  * Encounter Resource:http://localhost:8080/fhir/Encounter/{dispatched_state.hospital_fhir.fhir_encounter_id}")
     print(f"  * Condition Resource:http://localhost:8080/fhir/Condition/{dispatched_state.hospital_fhir.fhir_condition_id}")
 
-    # 4. Voice Agent Trigger
-    print("\n--- Family Notification Voice Agent ---")
+    # 5. Family Communication Specialist Workflow
+    print("\n--- Family Communication Specialist Workflow ---")
     print(f"  * Call Status:       {dispatched_state.voice_family.call_status}")
     print(f"  * Dispatch SID:      {dispatched_state.voice_family.call_id}")
     print(f"  * Contact Target:    {dispatched_state.voice_family.recipient_phone}")
-    print(f"  * Graph State:       {dispatched_state.control_audit.execution_stage} (Checkpoint Saved)")
+    print(f"  * Consent Granted:   {dispatched_state.voice_family.consent_granted}")
+    print(f"  * Checkpoint State:  {dispatched_state.control_audit.execution_stage}")
 
-    # 5. Simulate Incoming Webhook
-    print("\n[3] SIMULATING ASYNC WEBHOOK CALLBACK (Family Call Concluded)")
-    print("  * Simulating incoming payload from voice bridge to /webhook/call-outcome...")
-    coordinator.resume_from_voice_webhook(
+    # 6. Asynchronous Webhook Resumption
+    print("\n[3] ASYNCHRONOUS WEBHOOK RESUMPTION (Next-of-Kin Callback)")
+    print("  * Simulating incoming disclosure payload from voice bridge to /webhook/call-outcome...")
+    orchestrator.resume_from_voice_webhook(
         thread_id=thread_id,
         call_id=dispatched_state.voice_family.call_id or "EXO-SIM-001",
         call_status="COMPLETED",
@@ -112,11 +116,11 @@ def run_happy_path_demo(
         medications=["Telmisartan 40mg (Hypertension)"],
         blood_group="B+",
         conditions=["Hypertension", "Type 2 Diabetes"],
-        summary="Spouse answered call. Consented to treatment. Verified blood group B+, cautioned about Ciprofloxacin allergy.",
+        summary="Spouse answered call. Consented to emergency care. Verified blood group B+, cautioned about Ciprofloxacin allergy.",
         duration_sec=88
     )
 
-    resumed_checkpoint = coordinator.app.get_state({"configurable": {"thread_id": thread_id}})
+    resumed_checkpoint = orchestrator.app.get_state({"configurable": {"thread_id": thread_id}})
     resumed_state = GoldenCaseState.model_validate(resumed_checkpoint.values)
 
     print("\n--- Checkpoint Resumption Succeeded ---")
@@ -128,7 +132,7 @@ def run_happy_path_demo(
     print(f"  * Call Summary:         \"{resumed_state.voice_family.call_summary}\"")
 
     print("\n" + "=" * 80)
-    print("   END-TO-END DEMO SUCCESS: ALL 4 AGENTS COORDINATED & STATE PERSISTED")
+    print("   END-TO-END DEMO SUCCESS: ORCHESTRATION & SPECIALIST WORKFLOWS VERIFIED")
     print("=" * 80)
     return resumed_state
 

@@ -41,6 +41,7 @@ class TriageOutput(BaseModel):
     )
     retry_count: int = Field(default=0, ge=0, description="Schema retry count if validation failed")
     triage_completed_at: Optional[datetime] = None
+    latency_ms: Optional[float] = Field(default=None, description="Execution latency of the triage agent in milliseconds")
 
 # =====================================================================
 # SECTION 3: Hospital / FHIR
@@ -57,8 +58,20 @@ class HospitalCandidate(BaseModel):
 
 class HospitalFhirOutput(BaseModel):
     candidate_hospitals: List[HospitalCandidate] = Field(default_factory=list)
+    raw_candidates: List[HospitalCandidate] = Field(
+        default_factory=list,
+        description="Stage 1 discovered candidates before acuity-dependent ranking"
+    )
     selected_hospital_id: Optional[str] = None
     selected_hospital_name: Optional[str] = None
+    ranking_reason: Optional[str] = Field(
+        default=None,
+        description="Explainable machine-readable rationale for facility selection"
+    )
+    discovery_latency_ms: Optional[float] = Field(
+        default=None,
+        description="Latency of Stage 1 spatial and capability discovery in milliseconds"
+    )
     bed_status: Literal["NONE", "REQUESTED", "CONFIRMED", "UNAVAILABLE"] = Field(default="NONE")
     fhir_bundle_id: Optional[str] = Field(default=None, description="ID of FHIR transaction bundle")
     fhir_patient_id: Optional[str] = Field(default=None, description="HAPI FHIR Patient resource ID")
@@ -103,26 +116,58 @@ class AuditLogEntry(BaseModel):
     latency_ms: Optional[float] = None
     details: Dict[str, Any] = Field(default_factory=dict)
 
+class HumanOverrideRecord(BaseModel):
+    field_overridden: str = Field(..., description="e.g. acuity_level or selected_hospital")
+    old_value: Optional[str] = None
+    new_value: str
+    dispatcher_notes: str
+    overridden_at: datetime = Field(default_factory=utc_now)
+
+class NodeExecutionTiming(BaseModel):
+    node_name: str
+    started_at: datetime = Field(default_factory=utc_now)
+    ended_at: Optional[datetime] = None
+    latency_ms: Optional[float] = None
+    is_parallel: bool = False
+
 class ControlAudit(BaseModel):
     current_node: str = Field(default="entry", description="Current active node in LangGraph")
     execution_stage: Literal[
         "INGESTION",
         "HARD_SOS_CHECK",
-        "PARALLEL_TRIAGE_HOSPITAL",
-        "COORDINATOR_MERGE",
+        "PARALLEL_TRIAGE_DISCOVERY",
+        "HOSPITAL_MATCHING",
+        "FHIR_REGISTRATION",
         "VOICE_DISPATCH",
         "AWAITING_WEBHOOK",
+        "CONSOLIDATION",
+        "DISPATCHER_REVIEW",
         "COMPLETED",
-        "FAILED"
+        "FAILED",
+        "PARALLEL_TRIAGE_HOSPITAL",
+        "COORDINATOR_MERGE"
     ] = Field(default="INGESTION")
     active_provider: Literal["groq", "gemini", "openrouter", "ollama_local"] = Field(default="groq")
     fallback_active: bool = Field(default=False)
     thread_id: str = Field(..., description="LangGraph durable checkpoint thread_id")
     errors: List[AuditError] = Field(default_factory=list)
     audit_trail: List[AuditLogEntry] = Field(default_factory=list)
+    human_overrides: List[HumanOverrideRecord] = Field(default_factory=list)
+    node_timings: Dict[str, NodeExecutionTiming] = Field(default_factory=dict)
     started_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
     completed_at: Optional[datetime] = None
+
+    def add_audit_entry(self, agent_name: str, action: str, latency_ms: Optional[float] = None, details: Optional[Dict[str, Any]] = None) -> None:
+        self.audit_trail.append(
+            AuditLogEntry(
+                agent_name=agent_name,
+                action=action,
+                latency_ms=latency_ms,
+                details=details or {}
+            )
+        )
+        self.updated_at = utc_now()
 
 # =====================================================================
 # ROOT SHARED STATE: GoldenCaseState
@@ -135,6 +180,14 @@ class GoldenCaseState(BaseModel):
     hospital_fhir: HospitalFhirOutput = Field(default_factory=HospitalFhirOutput)
     voice_family: VoiceFamilyOutput = Field(default_factory=VoiceFamilyOutput)
     control_audit: ControlAudit
+
+    @property
+    def hospital(self) -> HospitalFhirOutput:
+        return self.hospital_fhir
+
+    @property
+    def family(self) -> VoiceFamilyOutput:
+        return self.voice_family
 
     def add_audit_entry(self, agent_name: str, action: str, latency_ms: Optional[float] = None, details: Optional[Dict[str, Any]] = None):
         self.control_audit.audit_trail.append(
@@ -157,3 +210,36 @@ class GoldenCaseState(BaseModel):
             )
         )
         self.control_audit.updated_at = utc_now()
+
+    def record_node_start(self, node_name: str, is_parallel: bool = False) -> None:
+        self.control_audit.node_timings[node_name] = NodeExecutionTiming(
+            node_name=node_name,
+            started_at=utc_now(),
+            is_parallel=is_parallel
+        )
+        self.control_audit.current_node = node_name
+        self.control_audit.updated_at = utc_now()
+
+    def record_node_end(self, node_name: str) -> Optional[float]:
+        timing = self.control_audit.node_timings.get(node_name)
+        if timing:
+            timing.ended_at = utc_now()
+            timing.latency_ms = round((timing.ended_at - timing.started_at).total_seconds() * 1000.0, 2)
+            self.control_audit.updated_at = utc_now()
+            return timing.latency_ms
+        return None
+
+    def record_human_override(self, field: str, old_val: Optional[str], new_val: str, notes: str) -> None:
+        override = HumanOverrideRecord(
+            field_overridden=field,
+            old_value=old_val,
+            new_value=new_val,
+            dispatcher_notes=notes,
+            overridden_at=utc_now()
+        )
+        self.control_audit.human_overrides.append(override)
+        self.add_audit_entry(
+            agent_name="human_dispatcher",
+            action=f"override_{field}",
+            details={"old_value": old_val, "new_value": new_val, "notes": notes}
+        )

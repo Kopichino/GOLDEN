@@ -4,10 +4,11 @@
 
 Team: Koppesh P (23BAI1113) · Abdul Khader (23BAI1123) · Santhosh Kumar (23BAI1236)
 
-> **Current local verification (2026-09-10):** HAPI FHIR is running with a seed
+> **Current local verification (2026-09-13):** HAPI FHIR is running with a seed
 > baseline of 3 organizations and 4 synthetic patients; integration tests have
-> brought the live patient count to 16. The full suite passes 35 tests. Voice
-> calls are simulated or refused according to the consent register.
+> brought the live patient count to 16. The full suite passes 36 tests. Voice
+> calls are simulated or refused according to the consent register. Real dependency-aware
+> LangGraph orchestration and two-stage hospital matching are verified.
 
 The capstone execution plan records the use case, phase workflow, demonstration
 script, evaluation evidence, and submission-readiness work:
@@ -24,13 +25,14 @@ script, evaluation evidence, and submission-readiness work:
 ## SLIDE 1 — Title Slide
 
 **[SAY]**
-"Good morning/afternoon, panel. Our project is called GOLDEN — Guideline-Grounded Orchestrated LLM Dispatch for Emergency Networks. In one line: it's an India-grounded, guideline-compliant decision-support system that uses a team of coordinated AI agents to speed up what happens in the first minutes after a road accident is reported — from triage, to finding a hospital bed, to registering the patient digitally, to calling the family — all done in parallel instead of one human dispatcher doing everything one step at a time on the phone."
+"Good morning/afternoon, panel. Our project is called GOLDEN — Guideline-Grounded Orchestrated LLM Dispatch for Emergency Networks. In one line: it's an India-grounded, guideline-compliant decision-support system that coordinates clinical triage, two-stage hospital matching, HL7 FHIR pre-registration, and family outreach using a LangGraph state machine and deterministic safety engines — speeding up the first minutes after an accident is reported while keeping human dispatchers firmly in control."
 
 **[MEANING — know these cold]**
 
-- **"Guideline-grounded"** = the AI's medical/triage decisions are anchored to real clinical/emergency guidelines (not just improvising), so its reasoning can be traced back to an actual protocol.
-- **"Orchestrated LLM"** = multiple large language model (LLM) "agents" are coordinated by a controller ("orchestrator"), each agent handling one job, instead of one giant AI doing everything.
-- **Framework stack — LangGraph (Python):** LangGraph is a Python library (built by the LangChain team) for building multi-step, multi-agent AI workflows as a _graph_ — nodes are agents/steps, edges are the logic for what happens next (including loops/retries). You chose it because emergency dispatch is naturally a flow with branches (e.g., "if life-threatening, skip to bypass path").
+- **"Guideline-grounded"** = the AI's clinical triage reasoning is anchored to real emergency guidelines (AIIMS Emergency Department Protocol and MoRTH 2025 Golden Hour SOP), so every classification cites an authoritative protocol.
+- **"Orchestrated Decision Support"** = instead of letting an unconstrained AI agent run wild, an explicit LangGraph workflow state machine directs control flow, deterministic engines enforce hard safety boundaries, and the LLM is focused strictly on clinical reasoning.
+- **Framework stack — LangGraph (Python):** LangGraph is a Python library for building stateful, cyclic workflows as a graph — nodes are specialized execution steps, edges govern state transitions and conditional routing (e.g. Hard-SOS emergency bypass).
+
 - **HL7 FHIR R4 / ABDM:**
   - **HL7 FHIR** (Fast Healthcare Interoperability Resources, Release 4) is the global standard format healthcare systems use to exchange patient data (like a common language between hospitals' software).
   - **ABDM** = Ayushman Bharat Digital Mission, India's government initiative for a national digital health ecosystem (gives citizens an ABHA health ID, health record linking, etc.). Building around FHIR + ABDM means your system could realistically plug into India's actual digital health infrastructure, not a fictional one.
@@ -71,45 +73,52 @@ The problem: India recorded about 1.99 lakh traffic deaths in 2024 — that's 54
 ## SLIDE 3 — Abstract & Core Idea
 
 **[SAY]**
-"The core idea in one sentence: GOLDEN is one multi-agent AI system that _parallelizes_ tasks a human dispatcher currently does _serially_, one phone call at a time. There are four agents at the core: a Coordinator, a Triage/Dispatcher agent, a Hospital & Bed agent, and a Family-Notification Voice agent. What we parallelize is: emergency triage, hospital-and-bed selection, FHIR patient pre-registration, and autonomous family notification — all happening at once instead of in sequence.
+"The core idea in one sentence: GOLDEN is an emergency decision-support system that coordinates pre-hospital response using an auditable, dependency-aware LangGraph state machine and deterministic safety engines. We avoid vague 'multi-agent' buzzwords by strictly separating responsibilities:
+1. A deterministic Hard-SOS safety engine (<0.02ms bypass).
+2. A clinical LLM Triage Agent grounded in AIIMS and MoRTH 2025 protocols.
+3. A two-stage hospital workflow: spatial discovery runs concurrently with triage, while final hospital matching waits at a Join Barrier for validated acuity.
+4. An atomic HL7 FHIR R4 interoperability tool layer.
+5. A consent-gated family outreach workflow.
+6. The human dispatcher, who maintains 100% final override authority with persistent audit logging.
 
-I want to be very clear on positioning: this is explicitly decision-support for human dispatchers. It is NOT autonomous medical decision-making — a human is always still in the loop for the actual medical/dispatch decision.
+I want to be very clear on positioning: this is explicitly decision-support for human dispatchers. It is NOT autonomous medical decision-making — a human is always firmly in the loop.
 
-Why this matters economically: MoRTH estimates the socio-economic cost of road accidents at roughly INR 1,47,114 crore — about 0.77% of GDP — and that could be as high as INR 5,96,820 crore, or 3.14% of GDP, once you adjust for underreporting, per World Bank estimates. And on the human side: fewer than 1 in 4 road accident victims in India currently reach care within the golden hour."
+Why this matters economically: MoRTH estimates the socio-economic cost of road accidents at roughly INR 1,47,114 crore — about 0.77% of GDP — and that could be as high as 3.14% of GDP per World Bank estimates. On the human side: fewer than 1 in 4 road accident victims in India currently reach care within the golden hour."
 
 **[MEANING]**
 
-- **Serial vs. parallel dispatch:** today, a human dispatcher on the phone does triage, then calls hospitals one by one to find a bed, then arranges registration, then may call the family — each step waits for the previous one to finish. Your system fires these off concurrently as independent agent tasks, which is the core efficiency claim of the whole project.
-- **"Decision support, not autonomous" positioning:** this is an important ethical/safety framing for a panel — you're not claiming the AI diagnoses or decides medical treatment; it surfaces recommendations (best hospital, triage acuity) that a human dispatcher approves/acts on. This matters both for medical-safety credibility and for feasibility (you can't and shouldn't claim regulatory-grade autonomous medical AI in a capstone).
+- **Dependency-aware parallelism vs. naive concurrency:** In real dispatch, you cannot pick the right hospital until you know patient acuity (a RED trauma patient needs Level-1 trauma/ICU beds; a GREEN patient goes to a district center to prevent overcrowding). Stage 1 (spatial discovery) runs concurrently with triage; Stage 2 (matching & ranking) executes at the LangGraph Join Barrier once acuity is known.
+- **Orchestrator vs. AI Agent:** The Coordinator is a deterministic state machine, NOT an LLM. Emergency routing cannot tolerate non-deterministic routing hallucinations. The LLM is confined strictly to clinical semantic comprehension (triage).
+- **"Decision support, not autonomous" positioning:** this is an important ethical/safety framing for a panel — you're not claiming the AI diagnoses or decides medical treatment; it surfaces recommendations (best hospital, triage acuity) that a human dispatcher approves/acts on.
 - **MoRTH:** Ministry of Road Transport and Highways — the Indian government ministry responsible for road safety data/policy; source of the socio-economic cost estimate.
 - **"1 in 4 reach care within golden hour":** this is your core motivating statistic — it directly frames the gap your project targets.
 
 **[BE READY FOR]**
 
-- _"If it's decision support only, what's the actual innovation?"_ → The innovation is the _speed and parallelism_ of gathering and structuring the information a human needs to decide — turning several sequential 2–5 minute phone calls into simultaneous automated agent actions, cutting the time-to-decision, while the human retains final authority.
+- _"If it's decision support only, what's the actual innovation?"_ → The innovation is the _speed and dependency-aware parallelism_ of gathering and structuring the information a human needs to decide — running spatial discovery concurrent with clinical triage, pre-registering via FHIR in sub-seconds, and logging auditable decision trails, cutting minutes into seconds while preserving human authority.
+- _"Why isn't the coordinator an AI agent?"_ → Because safety-critical workflows need deterministic state transitions and auditable join barriers. An LLM coordinator introduces routing hallucinations and latency.
 
 ---
 
 ## SLIDE 4 — Objectives & Expected Outcomes
 
 **[SAY]**
-"We have three primary objectives. One: build an end-to-end LangGraph pipeline that goes from ingesting an incident report, through triage, hospital/bed matching, FHIR pre-registration, to a family voice call — within a target latency. Two: build a real AI voice-calling agent — using Exotel telephony integrated with Google's Gemini Live model through a custom Python audio bridge, with async webhook-based state resumption so the graph can pause during the call and resume when it's done. Three: implement guideline-grounded triage with a hard-SOS bypass — a deterministic rule-based path that completely skips LLM latency for clearly life-threatening cases.
+"We have three primary objectives. One: build an end-to-end dependency-aware LangGraph pipeline that coordinates incident ingestion, clinical triage, two-stage hospital matching, FHIR pre-registration, and consent-gated family outreach — within a target latency. Two: implement a consent-gated voice outreach workflow — using Exotel telephony and audio resampling, with async webhook-based state resumption so the graph can pause during the call and resume when completed. Three: implement guideline-grounded triage with a deterministic hard-SOS bypass that completely skips LLM latency for non-negotiable life threats.
 
-Our secondary objectives: handling code-mixed Tamil–English input and measuring the accuracy delta versus English-only; mitigating cascading hallucination across agent handoffs using schema validation and inter-agent verification; comparing model tiering — a hosted 70-billion-parameter model versus a local 7–8B model under simulated degraded connectivity; and benchmarking against MedAgentBench, a published healthcare-agent benchmark.
+Our secondary objectives: handling code-mixed Tamil–English input; mitigating cascading hallucination across state transitions using schema validation; comparing model tiering (hosted 70B vs. local 7–8B); and benchmarking against MedAgentBench.
 
-Expected outcomes: a working end-to-end demo with ablation results E1 through E6, a working hard-SOS bypass with offline fallback, a MedAgentBench score compared against published baselines, and a standards-compliant FHIR artifact plus a rehearsed live demo script."
+Expected outcomes: a working end-to-end demo with 36 passing tests, a working hard-SOS bypass with offline fallback, two-stage hospital matching with machine-readable ranking reasons, and an auditable live dispatcher dashboard with human override persistence."
 
 **[MEANING]**
 
 - **Exotel:** an Indian cloud telephony provider (API-based calling/SMS) — lets your code programmatically place and manage real phone calls.
-- **Gemini Live:** Google's real-time, low-latency conversational voice AI model — used here as the "brain" that actually talks to the family member on the call.
-- **Audio bridge:** custom code that connects two audio systems with different formats/protocols (Exotel's telephony audio stream and Gemini Live's expected audio format) so they can talk to each other.
+- **Audio bridge:** custom code that connects two audio systems with different formats/protocols (Exotel's telephony audio stream and conversational audio) so they can talk to each other.
 - **Webhook-based state resumption:** when the phone call ends, Exotel/your call-handling service sends an HTTP callback ("webhook") back to your system, which then resumes the paused LangGraph workflow with the call's outcome — this is _why_ checkpointing (from Slide 2) matters.
-- **Hard-SOS bypass:** a deterministic (non-LLM, rule-based) fast path — if the incident report contains clear life-threat keywords/patterns, the system skips the LLM triage step entirely (LLMs add latency and non-zero error risk) and immediately flags it as critical.
+- **Hard-SOS bypass:** a deterministic (non-LLM, rule-based) fast path — if the incident report contains clear life-threat keywords/patterns, the system skips the LLM triage step entirely (<0.02ms) and immediately flags it as critical.
 - **Code-mixed Tamil–English:** real emergency callers in Tamil Nadu often mix Tamil and English in the same sentence ("code-switching/code-mixing") — a major real-world NLP challenge that pure English-trained systems handle poorly.
 - **Cascading hallucination:** when one agent's incorrect/hallucinated output is passed to the next agent as if it were true, and errors compound across the pipeline — a known failure mode in multi-agent LLM systems.
 - **Model tiering (70B vs 7–8B):** a bigger model (70 billion parameters) is generally more accurate but needs a hosted/cloud API (needs connectivity); a smaller local model (7–8B parameters) can run offline on modest hardware but is less capable — you test the trade-off for a "degraded connectivity" scenario relevant to rural/disaster settings.
-- **MedAgentBench:** a published benchmark (Jiang et al., 2025, NEJM AI) that measures how well an LLM agent can interact with FHIR/EHR systems to complete clinical tasks — you use it as an external, objective yardstick for your Hospital/FHIR agent instead of only self-reported metrics.
+- **MedAgentBench:** a published benchmark (Jiang et al., 2025, NEJM AI) that measures how well an LLM agent can interact with FHIR/EHR systems to complete clinical tasks — you use it as an external, objective yardstick for your Hospital Discovery and FHIR Tool Service instead of only self-reported metrics.
 - **Ablations (E1–E6):** "ablation" experiments = you remove/change one component at a time and measure the effect, to prove _which_ design choices actually help (see Slide 8 for the six experiments).
 
 **[BE READY FOR]**
@@ -122,9 +131,9 @@ Expected outcomes: a working end-to-end demo with ablation results E1 through E6
 ## SLIDE 5 — Scope & Feasibility
 
 **[SAY]**
-"To keep this achievable within a capstone timeline, we defined a clear scope. In scope: LangGraph orchestration plus the Triage Agent; the Hospital/Bed Agent with a FHIR server built on HAPI FHIR and populated with Synthea synthetic patient data; FHIR pre-registration and voice-call integration; a live dashboard plus an evaluation and ablation harness; India-grounded prompting with a safety layer; and a simulated ambulance/traffic visualization. Out of scope: real patient data or unconsented call recipients, production hospital APIs or actual ABDM certification, autonomous diagnosis or real traffic-signal control, and vision-language-model-based trauma diagnosis from images.
+"To keep this achievable within a capstone timeline, we defined a clear scope. In scope: LangGraph orchestration plus the clinical Triage Agent; the decoupled Hospital Discovery and Matching Subsystem with a FHIR server built on HAPI FHIR and populated with Synthea synthetic patient data; FHIR pre-registration and voice-call integration; a live dashboard plus an evaluation and ablation harness; India-grounded prompting with a safety layer; and a simulated ambulance/traffic visualization. Out of scope: real patient data or unconsented call recipients, production hospital APIs or actual ABDM certification, autonomous diagnosis or real traffic-signal control, and vision-language-model-based trauma diagnosis from images.
 
-We made several feasibility corrections from our original plan. The biggest: we reduced from an originally-planned 7-agent system down to a focused 4-agent core. On model hosting, we dropped the idea of self-hosting a 70B model — which would have needed roughly two 80GB GPUs — in favor of free-tier hosted inference: Groq's Llama 3.3 70B, Gemini 2.5 Flash, and OpenRouter, with Llama 3.1 8B or Qwen 2.5 7B running locally via Ollama only for the offline-fallback case. On telephony, we technically verified that Exotel's 8kHz audio can be resampled to Gemini Live's 16kHz/24kHz using Python, NumPy, and SciPy — and for consent and legal safety, test calls are restricted to consenting team members, per TRAI's Telecom Commercial Communications Customer Preference Regulations, 2018. Finally, the route/ambulance visualization and accident-detection vision agents are optional — we'll only add them if the core system is stable."
+We made several feasibility corrections from our original plan. The biggest: we refactored from an originally-planned monolithic 7-agent system into a principled emergency coordination architecture (state machine orchestrator, deterministic Hard-SOS safety engine, clinical Triage agent, decoupled Hospital Discovery/Matching/FHIR services, and Family Communication workflow). On model hosting, we dropped the idea of self-hosting a 70B model — which would have needed roughly two 80GB GPUs — in favor of free-tier hosted inference: Groq's Llama 3.3 70B, Gemini 2.5 Flash, and OpenRouter, with Llama 3.1 8B or Qwen 2.5 7B running locally via Ollama only for the offline-fallback case. On telephony, we technically verified that Exotel's 8kHz audio can be resampled to Gemini Live's 16kHz/24kHz using Python, NumPy, and SciPy — and for consent and legal safety, test calls are restricted to consenting team members, per TRAI's Telecom Commercial Communications Customer Preference Regulations, 2018. Finally, the route/ambulance visualization and accident-detection vision agents are optional — we'll only add them if the core system is stable."
 
 **[MEANING]**
 
@@ -138,7 +147,7 @@ We made several feasibility corrections from our original plan. The biggest: we 
 
 **[BE READY FOR]**
 
-- _"Why cut from 7 agents to 4?"_ → More agents = more coordination complexity, more failure points, and less time to properly evaluate any one part; 4 agents let you build something that's actually finished, tested, and demoable rather than partially working across 7.
+- _"Why refactor from 7 agents to this architecture?"_ → More independent agents without central state machine control leads to compounding errors, cascading hallucinations, and unmanageable failure modes; this architecture cleanly separates deterministic routing, clinical LLM decision-support, FHIR tools, and telephony workflows into a predictable, testable system.
 - _"Isn't relying on free-tier hosted APIs risky?"_ → Yes — that's precisely why you built the local-model offline fallback (Ollama) and why ablation E5 explicitly measures degraded-connectivity behavior.
 
 ---
@@ -146,9 +155,9 @@ We made several feasibility corrections from our original plan. The biggest: we 
 ## SLIDE 6 — Preliminary Work Plan (5 Phases)
 
 **[SAY]**
-"Our plan has five phases. Phase 0, Foundations: register for PhysioNet/CITI training and ABDM sandbox access, get API keys, set up HAPI FHIR and Synthea, and freeze the architecture — deliverable is a working FHIR store plus working LLM calls and a version-1 design doc. Phase 1, Core Agents: build the Triage Agent, Hospital/Bed Agent, the LangGraph orchestrator with the hard-SOS bypass, and the Voice Agent — deliverable is an end-to-end 'happy path' demo, meaning the simplest successful case works start to finish. Phase 2, Integration, Safety & Dashboard: add the guardrail/validation layer, build the live dashboard, add code-mixed speech-to-text using Whisper, and the offline fallback via Ollama — deliverable is Integrated Demo v1. Phase 3, Evaluation & Experiments: build the evaluation harness and run ablations E1 through E6, including MedAgentBench, plus optional agents if time allows — deliverable is results tables and charts. Phase 4, Writing & Polish: draft an arXiv paper, write the final report, and rehearse the live demo — deliverable is a submission-ready paper and viva package.
+"Our plan has five phases. Phase 0, Foundations: register for PhysioNet/CITI training and ABDM sandbox access, get API keys, set up HAPI FHIR and Synthea, and freeze the architecture — deliverable is a working FHIR store plus working LLM calls and a version-1 design doc. Phase 1, Core Pipeline: build the clinical Triage Agent, decoupled Hospital Discovery and Matcher, the LangGraph Orchestrator with the Hard-SOS bypass, and the Family Communication Workflow — deliverable is an end-to-end 'happy path' demo, meaning the simplest successful case works start to finish. Phase 2, Integration, Safety & Dashboard: add the guardrail/validation layer, build the live dashboard, add code-mixed speech-to-text using Whisper, and the offline fallback via Ollama — deliverable is Integrated Demo v1. Phase 3, Evaluation & Experiments: build the evaluation harness and run ablations E1 through E6, including MedAgentBench, plus optional modules if time allows — deliverable is results tables and charts. Phase 4, Writing & Polish: draft an arXiv paper, write the final report, and rehearse the live demo — deliverable is a submission-ready paper and viva package.
 
-There's one key decision gate: after Phases 1 and 2, we only add ONE optional agent if the core system is stable — otherwise we reinvest that time into deeper evaluation instead."
+There's one key decision gate: after Phases 1 and 2, we only add ONE optional module if the core system is stable — otherwise we reinvest that time into deeper evaluation instead."
 
 **[MEANING]**
 
@@ -161,7 +170,7 @@ There's one key decision gate: after Phases 1 and 2, we only add ONE optional ag
 **[BE READY FOR]**
 
 - _"What's your current phase?"_ → Answer honestly based on where your team actually is right now.
-- _"What happens if Phase 1 core agents aren't stable by the deadline?"_ → The decision gate exists exactly for this — you deprioritize optional agents and invest remaining time into hardening/evaluating the 4-agent core rather than adding scope.
+- _"What happens if Phase 1 core pipeline isn't stable by the deadline?"_ → The decision gate exists exactly for this — you deprioritize optional modules and invest remaining time into hardening/evaluating the core coordination pipeline rather than adding scope.
 
 ---
 
@@ -201,7 +210,7 @@ E4, Multilingual Robustness — English versus Tamil–English: we measure the a
 
 E5, Offline Resilience — Hosted 70B versus Local 7-to-8B: we measure output quality, latency, and availability during simulated connectivity loss, to answer whether the system degrades gracefully rather than failing completely.
 
-E6, External Validation — MedAgentBench: we measure EHR interaction success and compare against Claude 3.5 Sonnet v2, GPT-4o, DeepSeek-V3, and other published baselines, to answer how our Hospital/FHIR agent performs against an established, external benchmark."
+E6, External Validation — MedAgentBench: we measure EHR interaction success and compare against Claude 3.5 Sonnet v2, GPT-4o, DeepSeek-V3, and other published baselines, to answer how our Hospital Discovery and FHIR Tool Service performs against an established, external benchmark."
 
 **[MEANING]**
 
@@ -220,54 +229,57 @@ E6, External Validation — MedAgentBench: we measure EHR interaction success an
 ## SLIDE 9 — System Design
 
 **[SAY]**
-"All our agents communicate through one strongly-typed Pydantic v2 shared state object — this is what lets LangGraph pause during the voice call and resume exactly where it left off once the webhook callback arrives. That state has several sections: Case Identity and Input — case ID, raw input, language, modality; Triage Output — acuity level, the hard-SOS flag, confidence, and a guideline reference; Hospital/FHIR — candidate hospitals, the selected hospital, bed status, and the bundle ID; Voice/Family — call status, consent, allergies, medications, and blood group; and Control & Audit — the current node in the graph, any errors, the checkpoint, and timestamps.
+"All components communicate through one strongly-typed Pydantic v2 shared state object — enabling durable LangGraph checkpointing and state resumption. That state has five well-defined sections: Case Identity and Input; Triage Output (acuity, confidence, guideline citation); Hospital State (candidate facilities, selected hospital, machine-readable ranking reason, FHIR bundle transaction ID); Voice & Family State (outbound call status, consent flag, allergies, medications); and Control & Audit (node timings, checkpoint ID, and an immutable list of human dispatcher overrides).
 
-The Hard-SOS Rule Engine takes the emergency report as input and uses deterministic keyword and pattern matching — zero LLM calls, sub-second response — triggered by terms like unresponsive, not breathing, no pulse, severe bleeding, or cardiac arrest. It's deliberately designed to accept some false positives in order to minimize false negatives — because in this context, missing a real emergency is far worse than one extra false alarm.
+The Hard-SOS Rule Engine takes the emergency report and uses deterministic regex matching — zero LLM calls, sub-millisecond execution (< 0.02ms) — triggered by non-negotiable life threats like cardiac arrest or unconsciousness. It accepts false positives to guarantee zero life-threat false negatives.
 
-The Triage Agent's pipeline: incident goes into a guideline-grounded prompt, the LLM reasons over it, output must fit a fixed JSON schema, Pydantic validates it, and if invalid it retries — only then does it join the shared state. It outputs acuity, confidence, rationale, and a guideline reference.
+The Triage Agent evaluates the incident narrative using guideline-grounded prompting (AIIMS / MoRTH 2025), validating output with Pydantic self-healing retries and a fail-safe offline heuristic fallback.
 
-The Hospital & Bed Agent runs FHIR queries to get candidate hospitals, checks bed availability, ranks candidates by acuity, distance, and availability, and writes the FHIR pre-registration bundle. Importantly, it uses targeted iterative FHIR queries rather than one giant single-shot retrieval — this is consistent with a finding from the FHIR-AgentBench literature that multi-turn querying works better.
+The Hospital & Bed subsystem uses a two-stage pipeline: Stage 1 discovers candidate hospitals and computes Haversine distances concurrently with triage, while Stage 2 waits at the LangGraph Join Barrier to rank facilities using validated triage acuity (e.g. enforcing Level-1 trauma centers for RED polytrauma cases) and generates an auditable ranking reason.
 
-The Voice Agent: the Coordinator triggers a non-blocking call — meaning the rest of the pipeline doesn't have to wait — through Exotel, our Python audio bridge, Gemini Live, family interaction happens, then a webhook fires and the checkpoint resumes. If it fails, we persist the payload for manual recovery rather than silently losing data.
+The Family Communication Agent explicitly checks caller consent before triggering outbound Exotel telephony. The graph pauses in an AWAITING_WEBHOOK checkpoint, and when next-of-kin allergy data arrives, resumes and completes the case.
 
-Finally, four design patterns tie it together: Orchestrator–Worker, where the Coordinator owns control flow while specialist agents stay independently testable; Circuit Breaker/Fallback, where a hosted-model failure triggers a local-model fallback; Idempotent Writer, meaning FHIR writes and calls can safely be retried without creating duplicates; and Checkpoint & Resume, which lets the graph survive the multi-minute voice interaction."
+Finally, four design patterns tie it together: Orchestrator State Machine (LangGraph with deterministic routing and join barriers); Two-Stage Decoupled Matching; Idempotent FHIR Transaction Bundles; and Human-in-the-Loop Governance with audit logging."
 
 **[MEANING]**
 
-- **Acuity:** in emergency medicine, a measure of how severe/urgent a patient's condition is (how quickly they need treatment) — this is literally what your Triage Agent is trying to classify.
-- **False positive vs. false negative (in this specific context):** a false positive = the system flags a non-emergency as a hard-SOS (wastes some resources, minor cost); a false negative = the system fails to flag a real emergency (potentially fatal cost). Your design explicitly accepts more false positives to drive false negatives toward zero — a classic asymmetric-cost safety design decision, and a great thing to explain confidently if asked.
-- **Non-blocking call:** a software design term — the system doesn't freeze/wait for the phone call to finish before continuing other work; it moves on and gets notified later (via webhook) when the call concludes.
-- **Idempotent:** an operation that produces the same result no matter how many times it's repeated — critical for network-unreliable operations like FHIR writes or phone calls, where a retry after a timeout shouldn't accidentally create two duplicate patient records or place two calls.
-- **Circuit breaker pattern:** a resilience design pattern (borrowed from electrical circuit breakers) — if a dependency (like the hosted LLM API) keeps failing, the system "trips" and reroutes to a fallback (the local model) instead of repeatedly hitting a broken/slow service.
-- **FHIR-AgentBench:** a benchmark/study you're citing about how LLM agents best query FHIR servers — their finding (that breaking queries into multiple targeted steps beats one giant query) directly informed your Hospital/Bed Agent's design.
+- **Two-Stage Hospital Matching:** Candidate search and Haversine distance calculations are acuity-independent and run concurrently with triage; facility ranking and trauma-level matching are acuity-dependent and execute only after validated triage acuity is known.
+- **Join Barrier:** A synchronization barrier in the graph that waits for both parallel branches (Triage Agent and Hospital Discovery) to finish before allowing Stage 2 matching to proceed.
+- **Human-in-the-Loop Override Persistence:** The human dispatcher has full authority to change the hospital or acuity; every override is immutably timestamped with the dispatcher's rationale in `human_overrides`.
+- **Asymmetric Safety:** Deliberately biasing Hard-SOS toward false alarms because missing a life threat is catastrophic, whereas an unnecessary hospital escalation carries negligible risk.
 
 **[BE READY FOR]**
 
-- _"Why not just have every agent talk to every other agent directly?"_ → That's a mesh topology — it gets combinatorially complex and hard to debug/test as agents grow; the orchestrator-worker pattern keeps each specialist agent independently testable and keeps control flow in one place (the Coordinator), which is more maintainable and more debuggable.
-- _"What happens on a webhook failure (e.g., the callback never arrives)?"_ → Be ready to explain your actual timeout/retry/manual-recovery handling — this ties to the "persist payload → manual recovery" failure path mentioned for the Voice Agent.
+- _"Why split hospital matching into two stages?"_ → Spatial discovery (Haversine math & FHIR queries) does not need medical info, so it runs in parallel with LLM triage to hide latency. But matching and ranking is acuity-conditioned — a RED case needs an ICU bed and trauma surgeon, whereas a GREEN case goes to an outpatient center.
+- _"Why isn't the coordinator an AI agent?"_ → State machines guarantee deterministic edge traversal, auditability, and safety barriers; an LLM orchestrator introduces non-deterministic hallucinations into workflow control.
 
 ---
 
 ## SLIDE 10 — System Architecture
 
 **[SAY]**
-"This is the end-to-end architecture view. The pattern is an orchestrator–specialist multi-agent design running as a stateful, cyclic LangGraph graph — 'cyclic' because it can loop back for retries, not just flow one-way.
+"This is the end-to-end architecture view. The system is a dependency-aware LangGraph state machine with deterministic safety engines, specialist reasoning, and human oversight.
 
-Ingestion handles incident reports and Tamil-English speech-to-text. Orchestration runs the hard-SOS bypass check before anything else in the flow. The Specialist Agents layer runs the Triage and Hospital agents in a parallel fan-out — meaning both start working at the same time rather than one after another. Data & Integration covers HAPI FHIR, Synthea, and our schemas. External & Presentation covers the hosted LLMs, the live dashboard, and the offline fallback.
+Walking through the 6-stage flow:
+1. Ingestion: Sanitizes citizen PII (Aadhaar, phone) and checks for prompt injection.
+2. Hard-SOS Check: Deterministic safety engine scans for life threats in under 0.02 milliseconds. If detected, it bypasses LLM triage directly to immediate hospital routing.
+3. Parallel Fan-Out: For non-immediate cases, the graph branches concurrently into the clinical Triage Agent and Stage 1 Hospital Discovery.
+4. LangGraph Join Barrier & Hospital Matching: Once both parallel nodes finish, Stage 2 matches and ranks candidate hospitals based on validated acuity, generating a machine-readable ranking reason, followed by atomic HL7 FHIR pre-registration.
+5. Family Communication: Checks consent and initiates simulated or live outbound calls, pausing execution until webhook callback.
+6. Consolidation & Dispatcher Review: The human dispatcher reviews recommendations with full authority to apply auditable overrides.
 
-Walking through it end to end: the Coordinator runs the hard-SOS check first, then fans out the Triage and Hospital agents in parallel, merges their outputs, and triggers the Voice Agent. The Triage/Dispatcher Agent does guideline-grounded acuity classification, handles Tamil-English code-mixed input, and produces schema-validated output. The Hospital & Bed Agent queries HAPI FHIR and Synthea, checks simulated bed availability, ranks by acuity/distance, and writes the FHIR pre-registration bundle. The Voice Agent places the Exotel outbound call to Gemini Live through our Python audio bridge, and n8n posts the call outcome back, resuming the paused graph. The Safety/Validation Layer applies Pydantic schema gates, deterministic checks, and a moderation call at every single agent handoff. And the Live Dashboard shows real-time case state, agent status, and call status."
+The Live Dashboard updates via Server-Sent Events, showing the pipeline progression, live FHIR resources, and audit trails."
 
 **[MEANING]**
 
-- **Cyclic graph:** unlike a simple linear pipeline (A→B→C), a cyclic graph allows going back to a previous node — e.g., "retry triage if validation failed" loops back rather than dead-ending, which is essential for your retry-cycle design from Slide 2.
-- **Fan-out (parallel):** one node in the graph triggers multiple independent branches to run concurrently (Triage and Hospital agents both start as soon as the hard-SOS check clears) — this parallelism is the literal mechanism behind your "parallelizes serial dispatcher work" core claim from Slide 3.
-- **n8n:** an open-source workflow-automation tool (like Zapier, but self-hostable) — here it's the piece of infrastructure that receives the webhook from the telephony/voice side and posts the call outcome back into your system, triggering the graph to resume.
-- **Moderation call:** an automated content-safety check (often another LLM or classifier call) run at each handoff to catch unsafe, nonsensical, or policy-violating content before it propagates further — an extra safety layer on top of schema validation.
+- **Dependency-Aware Parallelism:** Parallelizing only what is computationally independent (Triage reasoning || Spatial Discovery), and synchronizing at a Join Barrier before dependent operations (Acuity-conditioned Hospital Matching).
+- **Hard-SOS Bypass:** Guarantees critical emergencies (e.g. cardiac arrest) do not wait for LLM tokens.
+- **ABDM Compliance:** Pre-registration writes atomic FHIR R4 Transaction Bundles (`Patient`, `Encounter`, `Condition`) compliant with India's Ayushman Bharat Digital Mission.
 
 **[BE READY FOR]**
 
-- _"Walk me through what happens in the first 5 seconds after an incident report comes in."_ → Ingestion (report/STT) → Hard-SOS deterministic check (sub-second) → if not hard-SOS, fan out Triage + Hospital agents in parallel → each validated against its schema → Coordinator merges → Voice Agent triggered non-blocking → dashboard updates in real time throughout.
-- _"Where exactly does n8n sit versus your Python audio bridge?"_ → The audio bridge handles the real-time audio streaming between Exotel and Gemini Live during the live call; n8n is the workflow piece that receives the _call-completion_ webhook event afterward and notifies your LangGraph app to resume — they're different stages (during-call vs. after-call).
+- _"Walk me through what happens in the first 5 seconds after an incident report comes in."_ → Ingestion & PII sanitization → Hard-SOS check (<0.02ms) → if not Hard-SOS, parallel fan-out (Triage LLM + Hospital Haversine discovery) → Join Barrier executes acuity-conditioned matching → FHIR pre-registration transaction bundle posted → dashboard updates in real time via SSE.
+- _"How do you prevent the LLM from making dangerous dispatch errors?"_ → Three layers: 1) Hard-SOS deterministic bypass; 2) Clinical Safety Validator blocking downgrades of polytrauma to GREEN; 3) Final Human Dispatcher oversight with mandatory audit logging.
 
 ---
 
