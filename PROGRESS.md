@@ -8,9 +8,9 @@
 
 | Phase | Description | Status | Verification & Artifacts |
 | :--- | :--- | :---: | :--- |
-| **Phase 0** | **Foundations**: State Schema, Architecture, HAPI FHIR, Docker & Synthea Data |  **COMPLETED** | HAPI FHIR Docker operational, Synthea data seeded, 17/17 tests passing |
+| **Phase 0** | **Foundations**: State Schema, Architecture, HAPI FHIR, Docker & Synthea Data |  **COMPLETED** | HAPI FHIR Docker operational, 3 organizations and 4 patients seeded, FHIR metadata verified |
 | **Phase 1** | **Core Agents & Happy Path**: Hard-SOS, Triage, Hospital, LangGraph Coordinator, Voice Pipeline |  **COMPLETED** | End-to-end happy path verified via `scripts/run_demo.py` |
-| **Phase 2** | **Hardening & Live Dispatcher Dashboard** (Items 1 & 2 for 50% Milestone) |  **COMPLETED** | Safety guardrails + live dashboard verified with 31/31 unit tests and browser demo |
+| **Phase 2** | **Hardening & Live Dispatcher Dashboard** (Items 1 & 2 for 50% Milestone) |  **COMPLETED** | Safety guardrails + live dashboard verified; full suite currently 35 passed |
 | **Phase 3** | **Ablations & Empirical Benchmarking** (E1–E6, MedAgentBench) | 🔒 *LOCKED* | Out of scope for current milestone |
 | **Phase 4** | **Paper, Artifacts & Documentation** | 🔒 *LOCKED* | Out of scope for current milestone |
 
@@ -207,14 +207,23 @@ Harden system safety across agent boundaries, neutralize adversarial inputs, pro
 #### C. Full Repository Test Suite Verification
 ```bash
 python -m pytest tests/ -v
-================== 31 passed, 1 warning in 77.63s (0:01:17) ===================
+================== 35 passed, 4 warnings in 13.24s ==================
 ```
-- Total test cases: **31 passed, 0 failed**.
+- Total test cases: **35 passed, 0 failed** in the latest verified run.
 - Coverage spans all state schemas, deterministic engines, LLM prompts, multi-turn FHIR transactions, audio resampling, LangGraph cyclic routing, safety guardrails, and dashboard server endpoints.
 
 ---
 
 ## 📝 Change & Update Log
+
+- **2026-09-10 (Capstone Phase 1 verification)**:
+  - Created `CAPSTONE_EXECUTION_PLAN.md` with the complete delivery workflow, use case, phase exit criteria, evidence requirements, and presentation plan.
+  - Ran `python scripts/run_demo.py` successfully: offline triage, hospital ranking, FHIR R4 pre-registration, consent-gated voice state, and webhook checkpoint resumption completed.
+  - Started the dashboard and verified `/api/health` returned `ONLINE` with `fhir_connected=true`; `/api/presets` and `/api/cases` responded successfully.
+  - Phase 1 is complete; Phase 2 dashboard presentation readiness is now in progress.
+- **2026-09-10 (Phase 2 presentation artifact)**:
+  - Added `DEMO_RUNBOOK.md` with the five-minute use-case narrative, exact startup commands, expected outputs, panel questions, limitations, and terminal fallback demo.
+  - Focused dashboard/coordinator verification passed: **6 passed**.
 
 - **2026-09-07 (Phase 0 & Phase 1)**:
   - Repository initialized with 5-section `GoldenCaseState` Pydantic model.
@@ -227,6 +236,6 @@ python -m pytest tests/ -v
   - Built FastAPI dashboard server with real-time SSE stream, HITL overrides, and FHIR resource proxy in `src/dashboard/server.py`.
   - Built modern dark-theme dispatcher interface (`index.html`, `app.css`, `app.js`).
   - Created dashboard test suite in `tests/test_dashboard.py` (4 passed).
-  - Full test suite verified: **31 passed in 77.63s**.
+  - Full test suite verified: **35 passed in 5.11s** on 2026-09-10 after HAPI startup and seeding. The live store reported 3 organizations and 16 patients because integration tests add records beyond the 4-record seed baseline.
   - Browser subagent completed live simulation demo on `http://localhost:8000` with screenshots captured.
   - 50% Milestone achieved. Awaiting permission to proceed to Phase 2 Item 3 / subsequent phases.

@@ -4,6 +4,15 @@
 
 Team: Koppesh P (23BAI1113) · Abdul Khader (23BAI1123) · Santhosh Kumar (23BAI1236)
 
+> **Current local verification (2026-09-10):** HAPI FHIR is running with a seed
+> baseline of 3 organizations and 4 synthetic patients; integration tests have
+> brought the live patient count to 16. The full suite passes 35 tests. Voice
+> calls are simulated or refused according to the consent register.
+
+The capstone execution plan records the use case, phase workflow, demonstration
+script, evaluation evidence, and submission-readiness work:
+[CAPSTONE_EXECUTION_PLAN.md](CAPSTONE_EXECUTION_PLAN.md).
+
 > How to use this document: for every slide there are three parts —
 > **[SAY]** the actual script you can speak (adapt in your own words, don't read verbatim),
 > **[MEANING]** what each technical term/concept actually means, in plain language, and

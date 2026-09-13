@@ -150,11 +150,22 @@ In the dashboard:
 
 ## 🧪 Optional: Running Tests & CLI Demo
 
+For the complete capstone demonstration order, see
+[CAPSTONE_EXECUTION_PLAN.md](CAPSTONE_EXECUTION_PLAN.md). The verified local
+sequence is: start HAPI, seed data, run tests, run the CLI demo, then start the
+dashboard and check `/api/health`.
+
 ### Run Full Test Suite
-To verify that all 31 unit tests, safety guardrails, and FHIR integrations pass:
+To verify the unit tests, safety guardrails, and FHIR integrations:
 ```powershell
 python -m pytest tests/ -v
 ```
+
+The latest verified local baseline is **35 passed** with HAPI FHIR running and seeded.
+
+Voice tests may report `CONSENT_REFUSED` for numbers outside
+`TEAM_CONSENT_PHONE_NUMBERS`; this is the intended TRAI safety guardrail, not a
+provider failure. A call ID is created only when a call is actually triggered.
 
 ### Run Command-Line Simulation Demo
 To run an emergency dispatch test purely inside the terminal without the browser:
