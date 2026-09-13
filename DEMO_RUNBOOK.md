@@ -30,7 +30,7 @@ Expected evidence:
 - HAPI container is running on port `8080`.
 - FHIR metadata returns `CapabilityStatement`.
 - The seed creates 3 organizations and 4 synthetic patients.
-- The full suite reports 35 passed tests.
+- The full suite reports 36 passed tests.
 
 Start the dashboard in a second terminal:
 
@@ -57,24 +57,28 @@ Open `http://127.0.0.1:8000` in the browser.
 
 ## 3. Primary Live Scenario
 
-Use the dashboard’s incident simulation control and choose the severe road-accident preset.
+Use the dashboard’s incident simulation control and choose the severe road-accident preset (*Tambaram Flyover Polytrauma*).
 
 Narrate the workflow in this order:
 
 1. **Incident ingestion:** The dispatcher receives a road-accident narrative and location.
-2. **Hard-SOS check:** The deterministic safety engine checks for immediate life threats before any LLM call.
-3. **Triage:** The case receives an acuity level and a guideline reference. With blank API keys, the local offline keyword fallback is used and clearly identified.
-4. **Hospital matching:** The system queries HAPI FHIR, ranks hospitals by distance and capability, and selects the best candidate.
-5. **FHIR pre-registration:** The system creates `Patient`, `Encounter`, and `Condition` resources in one transaction bundle.
-6. **Voice workflow:** The call is simulated only for consented test numbers. An unauthorized number produces `CONSENT_REFUSED`, demonstrating the safety guardrail.
-7. **Dashboard evidence:** The case card shows the acuity, selected hospital, FHIR IDs, voice state, and audit trail.
+2. **Hard-SOS check:** The deterministic safety engine checks for immediate life threats in < 0.02ms before any LLM call.
+3. **Parallel Discovery & Triage:**
+   - The Triage Agent reasons over clinical acuity (AIIMS / MoRTH 2025). With blank API keys, the offline heuristic fallback is used and clearly identified.
+   - Concurrently, Stage 1 Hospital Discovery queries HAPI FHIR and calculates Haversine distances to populate candidate facilities.
+4. **Acuity-Conditioned Matching:** At the LangGraph Join Barrier, Stage 2 Hospital Matching scores and ranks hospitals based on the validated clinical acuity, generating an auditable `ranking_reason`.
+5. **FHIR pre-registration:** The system creates `Patient`, `Encounter`, and `Condition` resources in one atomic transaction bundle.
+6. **Voice workflow:** The Family Communication Agent verifies consent before triggering outbound calls. The call is simulated only for consented test numbers; an unauthorized number produces `CONSENT_REFUSED`.
+7. **Human-in-the-Loop Override:** The dispatcher exercises override authority to adjust acuity or hospital destination, generating an immutable audit trail entry in `human_overrides`.
 
 Expected primary evidence:
 
 - Triage status: `RED` for a life-threat scenario or `YELLOW` for the standard trauma preset.
 - Hospital bed status: `CONFIRMED` when HAPI is available.
+- Ranking reason: Clear explanation why the selected facility was chosen.
 - FHIR submission: `SUCCESS`.
-- Voice state: `TRIGGERED`, `IDLE`, or `CONSENT_REFUSED` depending on the configured test number.
+- Voice state: `TRIGGERED`, `IDLE`, or `CONSENT_REFUSED` depending on caller consent and configured test numbers.
+- Human override: Timestamped log with dispatcher rationale.
 
 ---
 
@@ -90,14 +94,14 @@ The terminal should show:
 
 - Case ingestion
 - Hard-SOS decision
-- Triage output
-- Hospital candidate ranking
-- FHIR bundle submission
-- Voice consent result
+- Parallel Triage & Hospital Discovery
+- Acuity-conditioned Hospital Matching with `ranking_reason`
+- FHIR transaction bundle submission
+- Voice consent check
 - Simulated webhook resumption
 - Final `COMPLETED` state with family history
 
-This is the preferred backup because it exercises the same coordinator and FHIR path without relying on browser state.
+This is the preferred backup because it exercises the exact same LangGraph orchestrator and FHIR path without relying on browser state.
 
 ---
 
@@ -107,13 +111,21 @@ This is the preferred backup because it exercises the same coordinator and FHIR 
 
 Emergency dispatchers must triage the incident, identify a hospital, reserve resources, register the patient, and contact family with limited information. GOLDEN coordinates these activities through one auditable state workflow.
 
+### Why is the Coordinator an orchestrator instead of an AI agent?
+
+Safety-critical emergency dispatch requires deterministic state transitions, auditable join barriers, and guaranteed error recovery. An LLM coordinator introduces non-deterministic edge traversal and latency. Confining LLM usage to clinical triage gives us semantic reasoning where needed, while keeping orchestration strictly deterministic.
+
+### Why is Hospital Matching split into two stages?
+
+Hospital destination selection depends on clinical acuity (a RED trauma case needs a Level-1 trauma center and ICU beds, while a GREEN case should go to a community clinic to avoid overcrowding). Therefore, Stage 1 (spatial discovery & Haversine distance) runs concurrently with triage, but Stage 2 (matching and ranking) waits at a LangGraph Join Barrier until validated triage acuity is known.
+
 ### Why use a deterministic Hard-SOS path?
 
-Immediate life threats should not wait for an LLM response. The rule engine provides a fast, explainable bypass and is intentionally biased toward escalation.
+Immediate life threats should not wait for an LLM response. The rule engine provides a fast (< 0.02ms), explainable bypass and is intentionally biased toward escalation.
 
 ### Why FHIR?
 
-FHIR provides a standardized healthcare data contract. The prototype proves that the workflow can create interoperable `Patient`, `Encounter`, and `Condition` records instead of storing only application-specific JSON.
+FHIR provides a standardized healthcare data contract. The prototype proves that the workflow can create interoperable `Patient`, `Encounter`, and `Condition` records compliant with India's Ayushman Bharat Digital Mission (ABDM).
 
 ### Is the patient data real?
 
@@ -121,7 +133,7 @@ No. All local hospital and patient records are synthetic and generated for demon
 
 ### What happens without an API key?
 
-The system uses a deterministic offline triage fallback. This keeps the demo reproducible and makes the provider dependency explicit.
+The system uses a deterministic offline triage fallback based on AIIMS/MoRTH guidelines. This keeps the demo reproducible and makes the provider dependency explicit.
 
 ### Can it place real calls?
 
@@ -140,9 +152,10 @@ Before presenting, confirm:
 - [ ] Docker container is running.
 - [ ] `/fhir/metadata` returns `CapabilityStatement`.
 - [ ] Seed command completed.
-- [ ] `python -m pytest -q` passes.
+- [ ] `python -m pytest -q` passes (36 tests).
 - [ ] Dashboard `/api/health` reports `ONLINE` and `fhir_connected=true`.
 - [ ] One case can be dispatched from the dashboard.
-- [ ] FHIR resource IDs are visible for the dispatched case.
+- [ ] FHIR resource IDs and ranking reasons are visible for the dispatched case.
 - [ ] Terminal backup demo is available.
-- [ ] The presenter can explain synthetic data, offline fallback, consent safety, and human oversight.
+- [ ] The presenter can explain synthetic data, offline fallback, two-stage hospital matching, consent safety, and human oversight.
+

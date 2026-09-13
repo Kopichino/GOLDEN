@@ -13,11 +13,14 @@ Review-Report
 Orchestration Framework: LangGraph (Python)
 Interoperability Standard: HL7 FHIR R4 / ABDM
 
-### Current Implementation Note (2026-09-10)
+### Current Implementation Note (2026-09-13)
 
 The local implementation has a running HAPI FHIR R4 backend with 3 seeded
-organizations and a 4-patient seed baseline. The latest full test run passed
-35 tests; integration-test records brought the live patient count to 16.
+organizations and a 4-patient seed baseline. The full automated test suite
+passes 36 tests (0 failures). The architecture implements dependency-aware
+LangGraph orchestration with an explicit Join Barrier, two-stage hospital
+matching, a consent-gated family communication workflow, and auditable
+human-in-the-loop override logging.
 Exotel calls remain restricted to numbers in the consent register.
 
 The capstone delivery workflow, demonstration sequence, evaluation phases, and
@@ -138,14 +141,15 @@ reau’s Accidental Deaths & Suicides in India (ADSI) 2024 report citing approxi
 related deaths in 2024 (up from 1.98 lakh in 2023) – averaging 546 deaths per day. Despite this scale,
 the “golden hour” following a crash is routinely lost to fragmented, manual coordination between In-
 dia’s 108 ambulance service, the 112 Emergency Response Support System (ERSS), and hospitals. This
-project proposes a multi-agent AI decision-support system that parallelizes emergency dispatch triage,
-hospital and bed selection, FHIR-based patient pre-registration, and autonomous family notification –
-tasks that are today performed serially and manually by a human dispatcher over the phone. The system
-is implemented as a stateful, cyclic LangGraph orchestration of a focused four-agent core (Coordinator,
-Triage/Dispatcher, Hospital & Bed, and Family-Notification Voice Agent), grounded in Indian clinical
-and regulatory standards (108/112, ABDM/FHIR R4, the May 2025 Golden-Hour Cashless Treatment
-Scheme), and is explicitly positioned as decision support for human dispatchers rather than autonomous
-medical decision-making.
+project proposes a decision-support framework that coordinates emergency dispatch triage,
+two-stage hospital and bed matching, FHIR-based patient pre-registration, and consent-gated family
+notification – tasks that are today performed serially and manually by a human dispatcher over the phone.
+The system is implemented as a stateful, dependency-aware LangGraph state machine combining a deterministic
+Hard-SOS safety engine (<0.02ms bypass), an AIIMS/MoRTH guideline-grounded LLM Triage Agent, an acuity-
+conditioned hospital matching workflow, and an HL7 FHIR R4 interoperability layer, grounded in Indian
+clinical and regulatory standards (108/112, ABDM/FHIR R4, MoRTH Golden-Hour Care SOP 2025). The system
+is explicitly positioned as decision support for human dispatchers with auditable override authority,
+rather than autonomous medical decision-making.
 
 ### Problem Definition
 
@@ -255,10 +259,12 @@ real traffic-signal control (SUMO simulation only, optional); and VLM-based medi
 ### 4.3 Feasibility Within Semester and Available Resources
 
 The project was originally scoped as a 7-agent system, which was assessed as over-scoped for a 3–
-person team within a single semester – demo value is concentrated in 3–4 agents, so the design has been
-deliberately reduced to a focused four-agent core, with two further agents (route/ambulance visualiza-
-tion and accident-detection vision) treated as optional stretch goals attempted only if the team is ahead
-of schedule. This reduction is the single largest feasibility correction applied to the plan.
+person team within a single semester. The design has been deliberately refactored into a principled
+emergency coordination architecture (central Orchestrator state machine, deterministic Hard-SOS safety engine,
+Triage Specialist Agent, decoupled Hospital Discovery/Matching/FHIR services, and Family Communication workflow),
+with two further components (route/ambulance visualization and accident-detection vision) treated as optional
+stretch goals attempted only if the team is ahead of schedule. This reduction and architectural clarity is the
+single largest feasibility correction applied to the plan.
 A second major feasibility risk was the original intention to self-host 70B-class open-weight models
 (Llama-3.3-70B / Qwen-2.5-72B) via vLLM on student hardware. This is not achievable on typical
 student hardware – self-hosting such models requires roughly two 80GB GPUs (or four 48GB cards at
@@ -363,9 +369,9 @@ Deliverable: Submission-ready paper and final viva package.
 ```
 ### Decision Gate
 
-Once the core four-agent system is stable and the Phase 1–2 deliverables are complete, the team adds
-exactly one optional agent (route visualization is recommended over SUMO or the vision agent). If the
-core is not yet stable at that point, all optional agents are cut and the remaining effort is reinvested into
+Once the core emergency coordination pipeline is stable and the Phase 1–2 deliverables are complete, the team adds
+exactly one optional module (route visualization is recommended over SUMO or the vision agent). If the
+pipeline is not yet stable at that point, all optional modules are cut and the remaining effort is reinvested into
 evaluation depth.
 
 
@@ -419,8 +425,8 @@ retrieve information and perform clinically meaningful actions inside a FHIR-com
 rather than answering static questions. Across 300 clinician-written tasks and 100 virtual patient profiles,
 Claude 3.5 Sonnet v2 achieved the strongest reported overall success rate (69.67%), ahead of GPT-4o
 (64.00%) and Gemini 1.5 Pro (62.00%). This is the primary precedent for benchmarking this project’s
-Hospital/FHIR Agent, and the project reuses MedAgentBench directly (Experiment E6) to situate its
-EHR-interaction agent against a published, reproducible baseline.
+Hospital Discovery and FHIR Tool Service, and the project reuses MedAgentBench directly (Experiment E6) to situate its
+EHR-interaction capability against a published, reproducible baseline.
 Lee et al. (2025/2026) present FHIR-AgentBench, which separates FHIR resource retrieval from
 answer generation across 2,931 clinician-sourced question-answer pairs derived from MIMIC-IV-FHIR.
 The strongest baseline reached only about 50% answer correctness, and multi-turn retrieval (71% recall)
@@ -736,8 +742,8 @@ al., 2026
 ```
 Closest architec-
 tural benchmark
-for the four-agent
-design
+for the emergency
+coordination design
 ```
 ### 6.8 Research Gap
 
@@ -805,22 +811,13 @@ human-in-the-loop review point.
 
 ### 7.3 Data Flow
 
-1. An incident report (text or transcribed speech) enters the Coordinator.
-2. The Coordinator performs the hard-SOS check. Life-threatening cases are routed immediately to
-    the Hospital & Bed Agent, skipping LLM-based triage latency entirely.
-
-
-Review-Report 7.4 Architecture Diagram
-
-3. For all other cases, the Triage Agent and Hospital & Bed Agent run in parallel – triage against the
-    guideline knowledge base, and hospital/bed lookup against the FHIR server – rather than serially,
-    as a human dispatcher would.
-4. The Coordinator merges both outputs, writes the FHIR pre-registration bundle, and asynchronously
-    triggers the Voice Agent.
-5. The graph checkpoints and pauses; execution resumes when the Voice Agent’s call-completed
-    webhook returns (allergies, medications, consent, blood group, etc.).
-6. The Safety/Validation Layer checks every hand-off along the way; the Dashboard reflects state
-    changes in real time.
+1. An incident report (text or transcribed speech) enters the Orchestrator.
+2. The Orchestrator evaluates the Hard-SOS deterministic safety engine (<0.02ms, regex, no LLM). Life-threatening cases trigger an immediate RED escalation bypass directly to Hospital Discovery, skipping LLM triage latency entirely.
+3. For non-SOS cases, the Triage Specialist Agent and Hospital Discovery execute in parallel (clinical guideline evaluation and spatial/capability FHIR discovery respectively).
+4. The Orchestrator applies the Join Barrier: once both branches finish, the Hospital Matcher deterministically matches and ranks facilities using the validated clinical acuity.
+5. The FHIR Tool Service submits the structured pre-registration transaction bundle (Patient, Encounter, Condition) to HAPI FHIR.
+6. The Family Communication Specialist Workflow initiates consent-gated outreach (TRAI TCCCPR 2018 guardrails) around Exotel, checkpointing until webhook resumption.
+7. The Human Dispatcher maintains continuous audit visibility and retains final override authority on acuity and facility destination.
 
 ### 7.4 Architecture Diagram
 

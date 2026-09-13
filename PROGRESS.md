@@ -10,12 +10,13 @@
 | :--- | :--- | :---: | :--- |
 | **Phase 0** | **Foundations**: State Schema, Architecture, HAPI FHIR, Docker & Synthea Data |  **COMPLETED** | HAPI FHIR Docker operational, 3 organizations and 4 patients seeded, FHIR metadata verified |
 | **Phase 1** | **Core Agents & Happy Path**: Hard-SOS, Triage, Hospital, LangGraph Coordinator, Voice Pipeline |  **COMPLETED** | End-to-end happy path verified via `scripts/run_demo.py` |
-| **Phase 2** | **Hardening & Live Dispatcher Dashboard** (Items 1 & 2 for 50% Milestone) |  **COMPLETED** | Safety guardrails + live dashboard verified; full suite currently 35 passed |
+| **Phase 2** | **Hardening, Architecture Refactor & Live Dashboard** |  **COMPLETED** | Safety guardrails, dependency-aware LangGraph state machine, two-stage matching, family consent workflow, live dashboard; 36 passed tests |
 | **Phase 3** | **Ablations & Empirical Benchmarking** (E1–E6, MedAgentBench) | 🔒 *LOCKED* | Out of scope for current milestone |
 | **Phase 4** | **Paper, Artifacts & Documentation** | 🔒 *LOCKED* | Out of scope for current milestone |
 
-> **Milestone Status: 50% PROJECT MILESTONE ACHIEVED**  
-> All components of Phase 0, Phase 1, and Phase 2 Items 1 & 2 are implemented, fully tested, and verified end-to-end.
+> **Milestone Status: Phase 2 Architecture Refactoring Completed**  
+> All components of Phase 0, Phase 1, and Phase 2 (Safety Guardrails, Dashboard, and Dependency-Aware Refactoring) are implemented, fully tested, and verified end-to-end with 36/36 tests passing.
+
 
 ---
 
@@ -68,50 +69,50 @@ Develop all specialist agents, orchestrate them through a stateful LangGraph sta
                                   +---------+---------+
                                             |
                                             v
-                                 +--------------------+
-                                 | Hard-SOS Rule Check|
-                                 +----+----------+----+
-                                      |          |
-                      [Life-Threat]   |          | [Non-Immediate]
-                     +----------------+          +----------------+
-                     |                                            |
-                     v                                            v
-         +-----------------------+                    +-----------------------+
-         | Direct Hospital Route |                    |    Parallel Fan-Out   |
-         +-----------+-----------+                    +-----------+-----------+
-                     |                                            |
-                     |                        +-------------------+-------------------+
-                     |                        |                                       |
-                     |                        v                                       v
-                     |             +---------------------+                 +---------------------+
-                     |             | Triage Agent (LLM)  |                 | Hospital/Bed Agent  |
-                     |             +----------+----------+                 +----------+----------+
-                     |                        |                                       |
-                     |                        +-------------------+-------------------+
-                     |                                            |
-                     +--------------------+-----------------------+
-                                          |
-                                          v
-                              +-----------------------+
-                              | LangGraph Coordinator |
-                              +-----------+-----------+
-                                          |
-                                          v
-                              +-----------------------+
-                              | Outbound Voice Agent  |
-                              +-----------+-----------+
-                                          |
-                                          v
-                              +-----------------------+
-                              |   Awaiting Webhook    |
-                              +-----------+-----------+
-                                          |
-                               (Caller submits history)
-                                          v
-                              +-----------------------+
-                              |  Checkpoint Resumption|
-                              |      & Completion     |
-                              +-----------------------+
+                                  +--------------------+
+                                  | Hard-SOS Rule Check|
+                                  +----+----------+----+
+                                       |          |
+                       [Life-Threat]   |          | [Non-Immediate]
+                      +----------------+          +----------------+
+                      |                                            |
+                      v                                            v
+          +-----------------------+                    +-----------------------+
+          | Immediate Escalation  |                    |    Parallel Fan-Out   |
+          +-----------+-----------+                    +-----------+-----------+
+                      |                                            |
+                      v                        +-------------------+-------------------+
+          +-----------------------+            |                                       |
+          |  Hospital Discovery   |            v                                       v
+          |  (Haversine & Beds)   |     +---------------------+                 +---------------------+
+          +-----------+-----------+     | Triage Agent (LLM)  |                 | Hospital Discovery  |
+                      |                 | (AIIMS/MoRTH Acuity)|                 | (Candidate Search)  |
+                      |                 +----------+----------+                 +----------+----------+
+                      |                            |                                       |
+                      |                            +-------------------+-------------------+
+                      |                                                |
+                      |                                                v [Join Barrier]
+                      +------------------------------------>+---------------------+
+                                                            |  Hospital Matching  |
+                                                            | (Acuity-Conditioned)|
+                                                            +----------+----------+
+                                                                       |
+                                                                       v
+                                                            +---------------------+
+                                                            | FHIR Pre-Reg Service|
+                                                            +----------+----------+
+                                                                       |
+                                                                       v
+                                                            +---------------------+
+                                                            |Family Communications|
+                                                            |  (Consent-Gated)    |
+                                                            +----------+----------+
+                                                                       |
+                                                                       v
+                                                            +---------------------+
+                                                            | Consolidation & END |
+                                                            | (Dispatcher Review) |
+                                                            +---------------------+
 ```
 
 #### A. Hard-SOS Rule Engine (`src/agents/hard_sos.py`)
@@ -131,41 +132,37 @@ Develop all specialist agents, orchestrate them through a stateful LangGraph sta
 - **Resilience**: Enforces Pydantic schema validation (`TriageOutput`) with a self-healing retry loop.
 - **Verification**: `tests/test_triage.py` passed.
 
-#### C. Hospital & Bed Matching Agent (`src/agents/hospital.py`)
-- **Role**: Geospatial search, live bed verification, and FHIR pre-registration.
-- **Multi-Turn FHIR Queries**:
-  1. Searches active emergency organizations in the vicinity via HAPI FHIR REST API.
-  2. Queries bed status and emergency capabilities.
-  3. Computes Haversine great-circle distance between incident GPS and hospital coordinates.
-  4. Applies multi-factor composite ranking: $Score = f(Distance, Beds, TraumaLevel)$.
-- **Atomic Pre-Registration Transaction**: Generates and posts an atomic HL7 FHIR R4 Transaction Bundle comprising:
-  - `Patient` resource (demographics, contact, triage status).
-  - `Encounter` resource (emergency class, priority, status `planned/in-progress`).
-  - `Condition` resource (clinical impression, chief complaint, ICD/SNOMED coding).
-- **Verification**: `tests/test_hospital.py` passed.
+#### C. Two-Stage Hospital Matching Workflow (`src/agents/hospital.py`)
+- **Role**: Geospatial search, live bed verification, acuity-conditioned matching, and FHIR pre-registration.
+- **Two-Stage Architecture**:
+  1. **Stage 1 (`discover_candidates`)**: Concurrently with LLM triage, queries HAPI FHIR for regional emergency facilities, calculates Haversine great-circle distances, and populates `raw_candidates`.
+  2. **Stage 2 (`match_and_rank`)**: Conditioned upon validated clinical triage acuity at the LangGraph Join Barrier. Enforces trauma-level requirements and bed availability, generating an auditable `ranking_reason`.
+  3. **Stage 3 (`pre_register_patient`)**: Generates and posts an atomic HL7 FHIR R4 Transaction Bundle (`Patient` + `Encounter` + `Condition`).
+- **Verification**: `tests/test_hospital.py` and `tests/test_architecture_refactor.py` passed.
 
-#### D. LangGraph Coordinator Orchestrator (`src/agents/coordinator.py`)
-- **Role**: Stateful, cyclic graph coordinating parallel specialist execution.
+#### D. GOLDEN Orchestrator (`src/agents/coordinator.py`)
+- **Role**: Stateful LangGraph dependency-aware workflow state machine (not an AI agent).
 - **Key Mechanics**:
-  - **Hard-SOS Conditional Edge**: Direct bypass to hospital routing if critical life-threat flag is set.
-  - **Parallel Fan-Out**: Concurrent dispatch of Triage Agent and Hospital Agent when incident requires full clinical deliberation.
-  - **Partial Dict Returns**: Avoids LangGraph state collision (`InvalidUpdateError`) by returning granular node updates (`{"triage": ...}`, `{"hospital_fhir": ...}`).
+  - **Hard-SOS Bypass**: Instant escalation to hospital discovery and matching upon deterministic life threat detection (< 0.02ms).
+  - **Dependency-Aware Parallelism**: Concurrent dispatch of Triage Agent and Hospital Discovery, followed by an explicit Join Barrier at Hospital Matching.
+  - **State Segregation**: Granular node dictionary returns (`{"triage": ...}`, `{"hospital_fhir": ...}`) avoiding LangGraph `InvalidUpdateError`.
   - **Durable Checkpointing**: Powered by LangGraph's `MemorySaver`, assigning thread persistence per `case_id`.
-  - **Asynchronous Webhook Resumption**: Graph pauses in `AWAITING_WEBHOOK` state after voice dispatch; resumes dynamically via `resume_from_voice_webhook(case_id, payload)`.
-- **Verification**: `tests/test_coordinator.py` passed.
+  - **Auditable HITL Control**: `apply_dispatcher_override` persists human dispatcher decisions with timestamps and rationales into `human_overrides`.
+- **Verification**: `tests/test_coordinator.py` and `tests/test_architecture_refactor.py` passed.
 
-#### E. Voice & Telephony Subsystem (`src/voice/`)
+#### E. Family Communication Workflow & Telephony (`src/voice/`)
+- **Family Communication Agent (`src/voice/family_communication.py`)**: Separate workflow checking caller consent (`consent_to_contact_nok`) before triggering telephony actions.
 - **Audio Bridge (`src/voice/audio_bridge.py`)**: Real-time polyphase resampling between Exotel's 8kHz G.711/PCM telephony format and Gemini Live's 16kHz/24kHz wideband audio using NumPy and SciPy.
 - **Exotel Client (`src/voice/exotel_client.py`)**: Outbound calling client featuring strict TRAI TCCCPR 2018 consent guardrails (simulation mode prevents unauthorized live calls during tests).
 - **Webhook Receiver (`src/voice/webhook_receiver.py`)**: FastAPI endpoint (`/webhook/call-outcome`) that validates incoming next-of-kin medical disclosures and triggers graph resumption.
-- **Verification**: `tests/test_audio_bridge.py` passed.
+- **Verification**: `tests/test_audio_bridge.py` and `tests/test_architecture_refactor.py` passed.
 
 ---
 
-## 🛡️ Phase 2: Hardening & Minimal Live Dashboard (Completed — 50% Milestone)
+## 🛡️ Phase 2: Hardening, Architecture Refactor & Live Dashboard (Completed)
 
 ### 1. Objective
-Harden system safety across agent boundaries, neutralize adversarial inputs, protect citizen PII, enforce clinical safety rules, and deliver a live emergency console for human dispatchers.
+Refactor architecture into a clean, dependency-aware LangGraph state machine with deterministic safety engines, separate workflows, auditable human-in-the-loop control, hardened guardrails, and a live dispatcher dashboard.
 
 ### 2. Implemented Subsystems
 
@@ -186,36 +183,43 @@ Harden system safety across agent boundaries, neutralize adversarial inputs, pro
   - Ensures a valid fallback hospital candidate is always present.
 - **Verification**: `tests/test_guardrails.py` passed (10/10 tests).
 
-#### B. Minimal Live Dispatcher Dashboard (`src/dashboard/`)
+#### B. Architectural Refactoring & State Schema Extensions (`src/state/schema.py`)
+- Added `raw_candidates` and `ranking_reason` to `HospitalState`.
+- Added `HumanOverrideRecord` model and `human_overrides` list to `ControlState` for immutable audit trails.
+- Added `NodeExecutionTiming` model and `node_timings` list to track latency across all pipeline nodes.
+- Helper methods added: `record_node_start()`, `record_node_end()`, `record_human_override()`, `add_audit_entry()`.
+
+#### C. Live Dispatcher Dashboard (`src/dashboard/`)
 - **FastAPI Backend Server (`src/dashboard/server.py`)**:
   - Real-Time **Server-Sent Events (SSE)** endpoint (`/api/events`) broadcasting state changes directly to connected browsers.
   - REST endpoints for case listing, case retrieval, health checks, and preset queries.
-  - **Human-in-the-Loop Override Endpoint** (`/api/cases/{case_id}/override`): Enables human dispatchers to adjust acuity or change the target hospital destination with a mandatory operational note.
+  - **Human-in-the-Loop Override Endpoint** (`/api/cases/{case_id}/override`): Enables human dispatchers to adjust acuity or change the target hospital destination with mandatory operational notes.
   - **Local FHIR Resource Proxy** (`/api/fhir/{resource_type}/{resource_id}`): Proxies queries directly to the local HAPI FHIR server on port 8080.
 - **Modern Emergency Dispatch Web Console (`src/dashboard/static/`)**:
-  - **Aesthetics & Theme**: Dark-mode glassmorphic console styled in Vanilla CSS, featuring glowing acuity badges (`#f43f5e`), clear typography (Inter, Outfit, JetBrains Mono), and micro-animations.
-  - **Real-Time Incident Queue**: Color-coded cards reflecting live acuity (`RED`, `YELLOW`, `GREEN`), incident landmarks, and timestamps.
-  - **Deep-Dive Case Inspector**:
-    1. *Caller Narrative Panel*: Verbatim transcript, sanitized phone number, and GPS coordinates.
-    2. *Clinical Triage Agent Panel*: Acuity badge, confidence score, guideline citation, and medical justification.
-    3. *Hospital & Live Bed Matching Panel*: Selected facility, distance, trauma level, live ICU beds, and ranked candidate comparison table.
-    4. *HL7 FHIR R4 Links*: Clickable links to inspect live `Patient/`, `Encounter/`, and `Condition/` resources in a modal JSON viewer.
-    5. *Next-of-Kin Telephony*: Outbound call status, live allergy tags (`Blood: O+`, `Allergy: Ciprofloxacin`, `Allergy: Shellfish`, `Med: Metformin 500mg daily`), and caller webhook callback trigger.
-  - **Pipeline Progression Tracker**: Visual 6-step flow (`Ingestion` $\rightarrow$ `Hard-SOS Rule` $\rightarrow$ `Parallel Fan-Out` $\rightarrow$ `Coordinator Merge` $\rightarrow$ `Voice Dispatch` $\rightarrow$ `Final Dispatch`).
-  - **Interactive Simulation Modal**: Preset buttons for Chennai South corridor scenarios (*Tambaram Polytrauma*, *Guindy Cardiac Arrest*, *OMR Concussion*) and custom incident submission.
+  - Dark-mode glassmorphic console styled in Vanilla CSS, featuring glowing acuity badges, clear typography, and micro-animations.
+  - Pipeline Tracker updated to reflect the 6-stage dependency-aware architecture.
+  - Real-time case queue, detailed specialist inspector, live HL7 FHIR link modal, and dispatcher override dialog.
 
-#### C. Full Repository Test Suite Verification
+#### D. Full Repository Test Suite Verification
 ```bash
 python -m pytest tests/ -v
-================== 35 passed, 4 warnings in 13.24s ==================
+================== 36 passed in 2.63s ==================
 ```
-- Total test cases: **35 passed, 0 failed** in the latest verified run.
-- Coverage spans all state schemas, deterministic engines, LLM prompts, multi-turn FHIR transactions, audio resampling, LangGraph cyclic routing, safety guardrails, and dashboard server endpoints.
+- Total test cases: **36 passed, 0 failed**.
+- Comprehensive coverage across schema validation, deterministic Hard-SOS, LLM triage, two-stage hospital matching, dependency barriers, FHIR bundle writes, audio resampling, guardrails, dashboard endpoints, and human overrides.
 
 ---
 
 ## 📝 Change & Update Log
 
+- **2026-09-13 (Phase 2 Architecture Refactoring Completed)**:
+  - Refactored architecture from inaccurate "4-agent concurrent" claim to principled dependency-aware LangGraph state machine with deterministic engines.
+  - Reclassified components: Hard-SOS (deterministic safety engine), Orchestrator (workflow state machine), Triage Agent (guideline-grounded LLM), Hospital Matching (two-stage workflow), FHIR (interoperability tool layer), Family Communication (consent-gated workflow), Human Dispatcher (override authority).
+  - Implemented real dependency-aware parallelism: Triage reasoning and Hospital Discovery run concurrently; Hospital Matching executes at Join Barrier using validated clinical acuity.
+  - Added `src/voice/family_communication.py` separating consent-gated family outreach from low-level telephony client.
+  - Extended state schema with `raw_candidates`, `ranking_reason`, `HumanOverrideRecord`, and node timings.
+  - Added architectural test suite `tests/test_architecture_refactor.py` (5 tests).
+  - Full test suite passed: **36 / 36 tests passing**.
 - **2026-09-10 (Capstone Phase 1 verification)**:
   - Created `CAPSTONE_EXECUTION_PLAN.md` with the complete delivery workflow, use case, phase exit criteria, evidence requirements, and presentation plan.
   - Ran `python scripts/run_demo.py` successfully: offline triage, hospital ranking, FHIR R4 pre-registration, consent-gated voice state, and webhook checkpoint resumption completed.
@@ -224,7 +228,6 @@ python -m pytest tests/ -v
 - **2026-09-10 (Phase 2 presentation artifact)**:
   - Added `DEMO_RUNBOOK.md` with the five-minute use-case narrative, exact startup commands, expected outputs, panel questions, limitations, and terminal fallback demo.
   - Focused dashboard/coordinator verification passed: **6 passed**.
-
 - **2026-09-07 (Phase 0 & Phase 1)**:
   - Repository initialized with 5-section `GoldenCaseState` Pydantic model.
   - HAPI FHIR JPA server running on Docker; Synthea synthetic data seeded.
@@ -232,10 +235,6 @@ python -m pytest tests/ -v
   - All 17 automated tests passed.
 - **2026-09-07 (Phase 2 Items 1 & 2 — 50% Milestone Reached)**:
   - Implemented `PIISanitizer`, `PromptInjectionDetector`, `ClinicalSafetyValidator`, and `InterAgentContractGuard` in `src/safety/guardrails.py`.
-  - Created unit tests in `tests/test_guardrails.py` (10 passed).
   - Built FastAPI dashboard server with real-time SSE stream, HITL overrides, and FHIR resource proxy in `src/dashboard/server.py`.
   - Built modern dark-theme dispatcher interface (`index.html`, `app.css`, `app.js`).
-  - Created dashboard test suite in `tests/test_dashboard.py` (4 passed).
-  - Full test suite verified: **35 passed in 5.11s** on 2026-09-10 after HAPI startup and seeding. The live store reported 3 organizations and 16 patients because integration tests add records beyond the 4-record seed baseline.
-  - Browser subagent completed live simulation demo on `http://localhost:8000` with screenshots captured.
-  - 50% Milestone achieved. Awaiting permission to proceed to Phase 2 Item 3 / subsequent phases.
+

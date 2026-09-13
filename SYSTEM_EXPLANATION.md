@@ -27,20 +27,22 @@
 ## 1. Executive Summary & Current Live Capabilities
 
 ### What is Live and Working Right Now?
-As of the **50% Milestone (Phase 0 + Phase 1 + Phase 2 Items 1 & 2)**, GOLDEN is an operational, end-to-end multi-agent system with the following active components:
+As of the **Phase 2 Architecture Refactoring**, GOLDEN is an operational, end-to-end decision-support system with the following active components:
 
-| Component | Status | Technology Stack | Core Responsibility |
+| Component | Nature / Classification | Technology Stack | Core Responsibility |
 | :--- | :---: | :--- | :--- |
-| **Local FHIR Server** | **LIVE** | Docker (`hapiproject/hapi:latest`) on port `8080` | Official HL7 FHIR R4 compliant healthcare record database |
-| **Synthea Synthetic Data** | **LIVE** | Python seed scripts + Synthea R4 Bundles | Seeded hospitals along Chennai South corridor (GST/OMR) with live bed counters |
-| **Hard-SOS Rule Engine** | **LIVE** | Python Regex Engine (<0.02ms latency) | Deterministic keyword/pattern bypass for immediate life threats (cardiac arrest, unconsciousness) |
-| **Clinical Triage Agent** | **LIVE** | Google Gemini 3.6 Flash / Groq Qwen 3.6 27B / Pydantic v2 | AIIMS ED & MoRTH 2025 guideline-grounded acuity classification (`RED`, `YELLOW`, `GREEN`, `BLACK`) |
-| **Hospital Matcher Agent** | **LIVE** | Haversine Vector Math + Multi-turn FHIR REST | Geospatial distance calculation, capability matching, and bed availability scoring |
-| **Atomic Pre-Registration**| **LIVE** | FHIR R4 Transaction Bundles | Auto-creates `Patient`, `Encounter`, and `Condition` resources on HAPI FHIR before ambulance arrives |
-| **LangGraph Coordinator** | **LIVE** | LangGraph `StateGraph` + `MemorySaver` checkpointer | Cyclic state machine managing parallel fan-out, conditional edges, and async pause/resumption |
-| **Voice Audio Bridge** | **LIVE** | NumPy & SciPy Polyphase Resampling | Converts 8kHz telephony audio $\leftrightarrow$ 16/24kHz wideband LLM audio |
-| **Safety Guardrails** | **LIVE** | Python Regex + Schema Gateways | Indian Aadhaar/Phone PII masking, prompt injection neutralization, and downgrade protection |
-| **Live Dispatcher Console**| **LIVE** | FastAPI + Server-Sent Events (SSE) + Vanilla HTML/CSS/JS | Real-time browser dashboard on port `8000` with Human-in-the-Loop overrides |
+| **Local FHIR Server** | **Tool / Data Layer** | Docker (`hapiproject/hapi:latest`) on port `8080` | Official HL7 FHIR R4 compliant healthcare record database |
+| **Synthea Synthetic Data** | **Data Layer** | Python seed scripts + Synthea R4 Bundles | Seeded hospitals along Chennai South corridor (GST/OMR) with live bed counters |
+| **Hard-SOS Safety Engine** | **Deterministic Engine** | Python Regex Engine (<0.02ms latency) | Deterministic keyword/pattern bypass for immediate life threats (cardiac arrest, unconsciousness) |
+| **Clinical Triage Agent** | **LLM Reasoning Agent** | Google Gemini 3.6 Flash / Groq Qwen 3.6 27B / Pydantic v2 | AIIMS ED & MoRTH 2025 guideline-grounded acuity classification (`RED`, `YELLOW`, `GREEN`, `BLACK`) |
+| **Two-Stage Hospital Matching** | **Specialist Workflow** | Haversine Math + Acuity-Conditioned Scoring | Stage 1 discovery concurrent with triage; Stage 2 acuity-conditioned matching & ranking at Join Barrier |
+| **Atomic Pre-Registration**| **Tool Integration Layer** | FHIR R4 Transaction Bundles | Auto-creates `Patient`, `Encounter`, and `Condition` resources on HAPI FHIR before ambulance arrives |
+| **GOLDEN Orchestrator** | **Workflow State Machine** | LangGraph `StateGraph` + `MemorySaver` | Manages fan-out concurrency, join barriers, conditional edges, and async pause/resumption (not an AI agent) |
+| **Family Communication** | **Consent-Gated Workflow**| Python Workflow + Exotel Client | Checks consent before outbound voice notification; collects next-of-kin allergy data |
+| **Voice Audio Bridge** | **Audio Tool** | NumPy & SciPy Polyphase Resampling | Converts 8kHz telephony audio $\leftrightarrow$ 16/24kHz wideband LLM audio |
+| **Safety Guardrails** | **Security & Guardrail Layer**| Python Regex + Schema Gateways | Indian Aadhaar/Phone PII masking, prompt injection neutralization, and downgrade protection |
+| **Live Dispatcher Console**| **Human Control Plane** | FastAPI + Server-Sent Events (SSE) + Vanilla HTML/CSS/JS | Real-time browser dashboard on port `8000` with auditable Human-in-the-Loop overrides |
+
 
 ---
 
@@ -172,36 +174,66 @@ Students often ask: *"Why don't we call the Google Distance Matrix API for every
 
 ## 5. Hospital Matching, Distance & Live Bed Allocation
 
-### How Does GOLDEN Find the Nearest Hospital?
-GOLDEN queries HAPI FHIR for all hospital organizations in the region. Each hospital has its exact GPS coordinates stored in its FHIR profile:
+### Two-Stage Matching Architecture: Why Matching Depends on Triage
+In pre-hospital triage, **you cannot select the best hospital before knowing how sick or injured the patient is**:
+- A patient with a minor sprained ankle (`GREEN`) should be routed to a nearby primary health center or district hospital, **not** a tertiary Level-1 trauma center, to prevent overflowing emergency rooms.
+- A polytrauma patient with hypovolemic shock (`RED`) **must** be routed to a facility with an active Level-1 trauma team, CT/neuro capabilities, and ICU beds, even if a basic clinic is 1 km closer.
+
+Therefore, GOLDEN splits hospital processing into two distinct phases with a **LangGraph Join Barrier**:
+
+```
+                       TWO-STAGE HOSPITAL WORKFLOW
+                       
+   [ Fan-Out ] ───────┬───────────────────────────────────────────┐
+                      │                                           │
+                      ▼                                           ▼
+             [ Triage Agent (LLM) ]                 [ Stage 1: Hospital Discovery ]
+             • AIIMS / MoRTH Guidelines             • Queries HAPI FHIR Organizations
+             • Produces: RED / YELLOW / GREEN       • Computes Haversine distances
+             • Validated Clinical Acuity            • Populates raw_candidates
+                      │                                           │
+                      └─────────────────────┬─────────────────────┘
+                                            │
+                                            v [ Join Barrier ]
+                             [ Stage 2: Hospital Matching ]
+                             • Conditioned on validated clinical acuity
+                             • Applies trauma level & ICU constraints
+                             • Generates machine-readable ranking_reason
+                             • Selects winning destination
+                                            │
+                                            v
+                             [ Stage 3: Atomic Pre-Registration ]
+                             • Submits FHIR R4 Transaction Bundle
+```
+
+### Stage 1: Acuity-Independent Candidate Discovery (`discover_candidates`)
+GOLDEN queries HAPI FHIR for all hospital organizations in the corridor. Each hospital has its physical coordinates stored in its FHIR profile:
 - *Government Hospital Chromepet*: `(12.9516, 80.1462)`
 - *Gleneagles HealthCity*: `(12.9038, 80.2012)`
 - *Chettinad Super Speciality*: `(12.8224, 80.2297)`
 
-It then applies the **Haversine Great-Circle Formula** (`src/agents/hospital.py`):
+It applies the **Haversine Great-Circle Formula** (`src/agents/hospital.py`):
 
 $$\Delta\sigma = 2 \arcsin \left( \sqrt{\sin^2\left(\frac{\Delta\phi}{2}\right) + \cos(\phi_1)\cos(\phi_2)\sin^2\left(\frac{\Delta\lambda}{2}\right)} \right)$$
 
 $$Distance = R \cdot \Delta\sigma \quad (\text{where } R = 6371.0 \text{ km})$$
 
-### The Multi-Factor Hospital Scoring Formula
-Distance alone is not enough in emergency dispatch: a hospital 2 km away with **zero ICU beds** or **no neurosurgery capability** is useless for a critical polytrauma case.
+Because Haversine and capability gathering require zero clinical information, **Stage 1 executes concurrently with the LLM Triage Agent**, hiding network and query latency.
 
-GOLDEN computes a **composite clinical utility score** for every candidate hospital:
+### Stage 2: Acuity-Conditioned Matching & Ranking (`match_and_rank`)
+At the LangGraph Join Barrier, Stage 2 combines the spatial candidates with the validated triage acuity to compute the **composite clinical utility score**:
 
 $$Score = \frac{100}{1 + Distance} + (Available\_ICU\_Beds \times 2.0) + (Available\_ER\_Beds \times 0.5) + Trauma\_Level\_Bonus$$
 
-- **Trauma Bonus**:
-  - `LEVEL_1` Trauma Center: **+15.0 points** (e.g. tertiary medical college with full trauma team)
-  - `LEVEL_2` Trauma Center: **+10.0 points** (e.g. government district hospital)
-  - `LEVEL_3` Center: **+5.0 points**
-- **Distance Penalty**: Formulated as $\frac{100}{1 + Distance}$ so that closer facilities receive higher base scores without divide-by-zero errors.
-- **Bed Weighting**: ICU beds are weighted **$4\times$ heavier** than general emergency beds for critical `RED` acuity patients.
+- **Clinical Acuity Constraints**:
+  - For `RED` patients, Level-1 trauma centers receive a **+15.0 bonus**, and ICU beds are weighted **$4\times$ heavier** than standard emergency beds.
+  - For `YELLOW` / `GREEN` patients, proximity is weighted more heavily to preserve tertiary ICU beds for critical trauma.
+- **Auditable Selection Rationale (`ranking_reason`)**:
+  - The engine outputs a human-readable and machine-auditable explanation for the choice:
+  - *Example*: `"Selected Government Hospital Chromepet (3.0 km, 6 ICU beds, Trauma LEVEL_2). Nearest facility with sufficient immediate ICU capacity and emergency coverage for RED acuity trauma."*
 
 ### Example Matching Output (Tambaram Scenario):
 1. **Government Hospital Chromepet**: Distance: `3.0 km` | ICU Beds: `6` | Trauma: `LEVEL_2` $\rightarrow$ **Selected** (Score: `78.4`)
-2. **Gleneagles HealthCity**: Distance: `11.8 km` | ICU Beds: `12` | Trauma: `LEVEL_1` $\rightarrow$ Ranked #2 (Score: `52.8`)
-3. **Chettinad Super Speciality**: Distance: `19.2 km` | ICU Beds: `8` | Trauma: `LEVEL_1` $\rightarrow$ Ranked #3 (Score: `35.9`)
 2. **Gleneagles HealthCity**: Distance: `11.8 km` | ICU Beds: `12` | Trauma: `LEVEL_1` $\rightarrow$ Ranked #2 (Score: `52.8`)
 3. **Chettinad Super Speciality**: Distance: `19.2 km` | ICU Beds: `8` | Trauma: `LEVEL_1` $\rightarrow$ Ranked #3 (Score: `35.9`)
 
@@ -407,15 +439,15 @@ You can test every capability of GOLDEN right now using your terminal and browse
 
 ---
 
-### Method 2: Running the Automated Test Suite (35 Tests)
+### Method 2: Running the Automated Test Suite (36 Tests)
 
-In PowerShell, activate your conda environment and run pytest:
+In PowerShell or your terminal, activate your environment and run pytest:
 ```powershell
-C:\Users\koppe\anaconda3\python.exe -m pytest tests/ -v
+python -m pytest tests/ -v
 ```
 **Expected Output**:
 ```
-================== 35 passed, 4 warnings in 13.24s ==================
+================== 36 passed in 2.63s ==================
 ```
 This automatically verifies:
 - `tests/test_guardrails.py`: PII masking (Aadhaar, Phone, PAN), injection detection, clinical downgrade protection (10 tests).
@@ -427,6 +459,7 @@ This automatically verifies:
 - `tests/test_triage.py`: Guideline-grounded triage prompt and failover (2 tests).
 - `tests/test_audio_bridge.py`: 8k $\leftrightarrow$ 16k/24k polyphase audio resampling (1 test).
 - `tests/test_state_schema.py`: 5-section Pydantic v2 validation (3 tests).
+- `tests/test_architecture_refactor.py`: Dependency-aware join barrier, two-stage hospital matching, Hard-SOS bypass, family consent gating, and HITL override persistence (5 tests).
 
 ---
 
@@ -434,7 +467,7 @@ This automatically verifies:
 
 Run the standalone demo script to trace execution directly in your terminal:
 ```powershell
-C:\Users\koppe\anaconda3\python.exe scripts/run_demo.py
+python scripts/run_demo.py
 ```
 This executes a complete emergency workflow from raw ingestion to HAPI FHIR bundle submission and webhook resumption, outputting colorized logs at each stage.
 
@@ -444,13 +477,17 @@ This executes a complete emergency workflow from raw ingestion to HAPI FHIR bund
 
 When presenting or answering viva/defense questions about GOLDEN, emphasize these core architectural differentiators:
 
-1. **Why LangGraph instead of simple LangChain or AutoGen?**
+1. **Why is the Coordinator an orchestrator and not an AI agent?**
+   - *Answer*: Safety-critical workflows cannot rely on an LLM to decide which sub-task to execute next. An LLM coordinator introduces non-deterministic edge traversal, hallucinated routing, and variable latency. GOLDEN uses a **LangGraph state machine** with deterministic conditional transitions, join barriers, and auditable state checkpoints. The LLM is confined strictly to clinical reasoning where its semantic comprehension is uniquely required (triage).
+2. **Why can't Hospital Matching run purely concurrently with Triage?**
+   - *Answer*: Hospital destination selection is **acuity-conditioned**. A `RED` polytrauma patient requires a facility with Level-1 trauma surgical suites and open ICU beds, whereas a `GREEN` patient should be directed to a community hospital to prevent tertiary center overcrowding. Therefore, GOLDEN executes **two-stage hospital processing**: spatial candidate discovery (Haversine vector math) runs concurrently with triage, but final matching and ranking occurs at a **LangGraph Join Barrier** only after validated triage acuity is known.
+3. **Why LangGraph instead of simple LangChain or AutoGen?**
    - *Answer*: Emergency dispatch requires a **stateful, cyclic graph with conditional branching and durable persistence**. LangGraph allows us to checkpoint execution when waiting for the voice webhook (`AWAITING_WEBHOOK`), resume cleanly, and manage parallel fan-out without state collisions.
-2. **Why not use an LLM for everything?**
-   - *Answer*: Critical emergencies cannot wait for LLM latency. Our **Hard-SOS Rule Engine executes in under 0.02 milliseconds** with zero LLM dependence. Furthermore, geospatial distance calculations are done via the **Haversine formula**, not LLM approximations.
-3. **How is clinical validity guaranteed?**
+4. **Why not use an LLM for everything?**
+   - *Answer*: Critical emergencies cannot wait for LLM latency. Our **Hard-SOS Safety Engine executes in under 0.02 milliseconds** with zero LLM dependence. Furthermore, geospatial distance calculations are done via the **Haversine formula**, not LLM approximations.
+5. **How is clinical validity guaranteed?**
    - *Answer*: Triage outputs are strictly constrained by schema contracts to cite recognized clinical standards (**AIIMS ED Protocol** and **MoRTH 2025 SOP**). The **Clinical Safety Validator** mathematically prevents unsafe downgrades of polytrauma cases.
-4. **How does this fit India's National Digital Health Mission?**
+6. **How does this fit India's National Digital Health Mission?**
    - *Answer*: Pre-registration uses **HL7 FHIR R4 Transaction Bundles**, matching the exact standard mandated by the **Ayushman Bharat Digital Mission (ABDM)**.
-5. **How is privacy protected?**
+7. **How is privacy protected?**
    - *Answer*: The system enforces strict compliance with India's **DPDP Act 2023** and **TRAI TCCCPR 2018**: sensitive citizen identifiers (Aadhaar, Phone, PAN) are scrubbed at ingestion, and all testing uses synthetic Synthea data.

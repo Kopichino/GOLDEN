@@ -80,10 +80,15 @@ const stepMap = {
   "INGESTION": "step-ingest",
   "INGESTED": "step-ingest",
   "HARD_SOS_CHECK": "step-sos",
+  "PARALLEL_TRIAGE_DISCOVERY": "step-fanout",
   "PARALLEL_TRIAGE_HOSPITAL": "step-fanout",
+  "HOSPITAL_MATCHING": "step-merge",
   "COORDINATOR_MERGE": "step-merge",
+  "FHIR_REGISTRATION": "step-voice",
   "VOICE_DISPATCH": "step-voice",
   "AWAITING_WEBHOOK": "step-voice",
+  "DISPATCHER_REVIEW": "step-complete",
+  "CONSOLIDATION": "step-complete",
   "COMPLETED": "step-complete"
 };
 
