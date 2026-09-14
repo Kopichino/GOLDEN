@@ -75,6 +75,47 @@ const fhirModalTitle = document.getElementById("fhir-modal-title");
 const fhirModalUrl = document.getElementById("fhir-modal-url");
 const fhirModalJson = document.getElementById("fhir-modal-json");
 
+// Card 5: Ambulance Fleet Dispatch
+const ambulanceTierBadge = document.getElementById("ambulance-tier-badge");
+const ambulanceCallsign = document.getElementById("ambulance-callsign");
+const ambulanceVehicleNo = document.getElementById("ambulance-vehicle-no");
+const ambulanceAcuityTag = document.getElementById("ambulance-acuity-tag");
+const ambulanceBaseStation = document.getElementById("ambulance-base-station");
+const ambulanceEtaToScene = document.getElementById("ambulance-eta-to-scene");
+const ambulanceDistToScene = document.getElementById("ambulance-dist-to-scene");
+const ambulanceParamedicName = document.getElementById("ambulance-paramedic-name");
+const ambulancePilotName = document.getElementById("ambulance-pilot-name");
+const ambulancePilotPhone = document.getElementById("ambulance-pilot-phone");
+const ambulanceEquipmentPills = document.getElementById("ambulance-equipment-pills");
+const ambulanceParamedicNotes = document.getElementById("ambulance-paramedic-notes");
+const btnViewCalloutTicket = document.getElementById("btn-view-callout-ticket");
+const ambulanceTicketRef = document.getElementById("ambulance-ticket-ref");
+
+// Modal: 108 Callout Ticket
+const modalCalloutTicket = document.getElementById("modal-callout-ticket");
+const btnCloseCalloutModal = document.getElementById("btn-close-callout-modal");
+const btnCloseCalloutTicket = document.getElementById("btn-close-callout-ticket");
+const btnPrintCalloutTicket = document.getElementById("btn-print-callout-ticket");
+const ticketModalId = document.getElementById("ticket-modal-id");
+const ticketModalTime = document.getElementById("ticket-modal-time");
+const ticketCaseId = document.getElementById("ticket-case-id");
+const ticketAcuity = document.getElementById("ticket-acuity");
+const ticketLocation = document.getElementById("ticket-location");
+const ticketGps = document.getElementById("ticket-gps");
+const ticketCallerPhone = document.getElementById("ticket-caller-phone");
+const ticketUnitCallsign = document.getElementById("ticket-unit-callsign");
+const ticketVehNo = document.getElementById("ticket-veh-no");
+const ticketTier = document.getElementById("ticket-tier");
+const ticketDepot = document.getElementById("ticket-depot");
+const ticketEta = document.getElementById("ticket-eta");
+const ticketDestHospital = document.getElementById("ticket-dest-hospital");
+const ticketParamedic = document.getElementById("ticket-paramedic");
+const ticketPilot = document.getElementById("ticket-pilot");
+const ticketPilotPhone = document.getElementById("ticket-pilot-phone");
+const ticketEquipManifest = document.getElementById("ticket-equip-manifest");
+const ticketDrivingDirections = document.getElementById("ticket-driving-directions");
+const ticketHandoverBrief = document.getElementById("ticket-handover-brief");
+
 // Pipeline Steps
 const stepMap = {
   "INGESTION": "step-ingest",
@@ -84,6 +125,7 @@ const stepMap = {
   "PARALLEL_TRIAGE_HOSPITAL": "step-fanout",
   "HOSPITAL_MATCHING": "step-merge",
   "COORDINATOR_MERGE": "step-merge",
+  "AMBULANCE_ALLOCATION": "step-ambulance",
   "FHIR_REGISTRATION": "step-voice",
   "VOICE_DISPATCH": "step-voice",
   "AWAITING_WEBHOOK": "step-voice",
@@ -92,12 +134,24 @@ const stepMap = {
   "COMPLETED": "step-complete"
 };
 
+// Tactical Corridor Map state
+let corridorMap = null;
+let incidentMarker = null;
+let incidentPerimeter = null;
+let hospitalMarkers = [];
+let ambulanceMarker = null;
+let ambulanceRouteLine = null;
+let routePolyline = null;
+let lastIncidentLatLng = null;
+let lastBoundsPoints = [];
+
 // =====================================================================
 // Initialization
 // =====================================================================
 document.addEventListener("DOMContentLoaded", () => {
   setupEventListeners();
   setupAnalyticsTab();
+  initCorridorMap();
   checkHealth();
   fetchCases();
   fetchAnalytics();
@@ -108,22 +162,83 @@ function setupEventListeners() {
   // Simulate Modal
   btnOpenSimulateModal.addEventListener("click", () => {
     modalSimulate.classList.remove("hidden");
+    setTimeout(() => initOrRefreshPickerMap(), 80);
   });
   btnCloseSimulateModal.addEventListener("click", () => modalSimulate.classList.add("hidden"));
   btnCancelSimulate.addEventListener("click", () => modalSimulate.classList.add("hidden"));
 
   // Preset Selection in Modal
+  const PRESET_COORDS = {
+    "tambaram_femur_crash": { lat: 12.9249, lon: 80.1472, landmark: "Tambaram Flyover, GST Road, Chennai", district: "Chennai" },
+    "guindy_cardiac_arrest": { lat: 13.0067, lon: 80.2026, landmark: "Guindy Industrial Estate, Chennai", district: "Chennai" },
+    "omr_concussion": { lat: 12.9385, lon: 80.2327, landmark: "OMR Thoraipakkam Signal, Chennai", district: "Chennai" }
+  };
+
   document.querySelectorAll(".preset-btn").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       document.querySelectorAll(".preset-btn").forEach((b) => b.classList.remove("selected"));
       btn.classList.add("selected");
       selectedPresetKey = btn.dataset.preset;
+      isCustomLocationSelected = false;
+
+      const pInfo = PRESET_COORDS[selectedPresetKey];
+      if (pInfo) {
+        const latInput = document.getElementById("input-custom-lat");
+        const lonInput = document.getElementById("input-custom-lon");
+        const landmarkInput = document.getElementById("input-custom-landmark");
+        const statusPill = document.getElementById("picker-status-pill");
+
+        if (latInput) latInput.value = pInfo.lat;
+        if (lonInput) lonInput.value = pInfo.lon;
+        if (landmarkInput) landmarkInput.value = pInfo.landmark;
+        if (statusPill) {
+          statusPill.textContent = `📍 Loaded Preset: ${pInfo.landmark}`;
+          statusPill.className = "picker-hint-badge";
+        }
+        if (pickerMap && pickerMarker) {
+          pickerMarker.setLatLng([pInfo.lat, pInfo.lon]);
+          pickerMap.setView([pInfo.lat, pInfo.lon], 13);
+        }
+      }
       // Clear custom fields
       document.getElementById("input-custom-narrative").value = "";
     });
   });
 
+  // Locate Search in Modal
+  const btnMapSearch = document.getElementById("btn-map-search");
+  if (btnMapSearch) {
+    btnMapSearch.addEventListener("click", handlePlaceSearch);
+  }
+  const inputMapSearch = document.getElementById("input-map-search");
+  if (inputMapSearch) {
+    inputMapSearch.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handlePlaceSearch();
+      }
+    });
+  }
+
+  // Manual Lat/Lon input listeners
+  const latInput = document.getElementById("input-custom-lat");
+  const lonInput = document.getElementById("input-custom-lon");
+  const onManualCoordChange = () => {
+    const lat = parseFloat(latInput?.value);
+    const lon = parseFloat(lonInput?.value);
+    if (!isNaN(lat) && !isNaN(lon)) {
+      if (pickerMap && pickerMarker) {
+        pickerMarker.setLatLng([lat, lon]);
+        pickerMap.setView([lat, lon], 13);
+      }
+      updateLocationFromPicker(lat, lon, true);
+    }
+  };
+  if (latInput) latInput.addEventListener("change", onManualCoordChange);
+  if (lonInput) lonInput.addEventListener("change", onManualCoordChange);
+
   btnSubmitSimulation.addEventListener("click", handleDispatchSimulation);
+
 
   // Override Modal
   btnOpenOverrideModal.addEventListener("click", populateAndOpenOverrideModal);
@@ -141,6 +256,20 @@ function setupEventListeners() {
 
   // Webhook Injection
   btnSimulateWebhook.addEventListener("click", handleSimulateWebhook);
+
+  // Ambulance CAD Callout Ticket Modal
+  if (btnViewCalloutTicket) {
+    btnViewCalloutTicket.addEventListener("click", () => openCalloutTicketModal(selectedCaseId));
+  }
+  if (btnCloseCalloutModal) {
+    btnCloseCalloutModal.addEventListener("click", () => modalCalloutTicket.classList.add("hidden"));
+  }
+  if (btnCloseCalloutTicket) {
+    btnCloseCalloutTicket.addEventListener("click", () => modalCalloutTicket.classList.add("hidden"));
+  }
+  if (btnPrintCalloutTicket) {
+    btnPrintCalloutTicket.addEventListener("click", () => window.print());
+  }
 
   // Filter Pills
   document.querySelectorAll(".pill").forEach((pill) => {
@@ -439,9 +568,493 @@ function renderCaseDetails(state) {
   // Enable simulate webhook button if call triggered or awaiting webhook
   btnSimulateWebhook.disabled = !(voice.call_status === "TRIGGERED" || audit.execution_stage === "AWAITING_WEBHOOK");
 
+  // Card 5: Ambulance Fleet Dispatch (108 CAD)
+  const amb = state.ambulance_dispatch || {};
+  const unit = amb.selected_unit;
+
+  if (unit && ambulanceTierBadge) {
+    const isAls = unit.unit_type === "ALS";
+    const missionStatus = (amb.mission_status || "DISPATCHED").toUpperCase();
+    let statusLabel = `${unit.unit_type} ALLOCATED`;
+    if (missionStatus === "ACKNOWLEDGED") statusLabel = "🚨 ACKNOWLEDGED BY CREW";
+    else if (missionStatus === "EN_ROUTE_SCENE") statusLabel = "🚑 EN ROUTE TO SCENE";
+    else if (missionStatus === "ON_SCENE") statusLabel = "📍 ON SCENE (10-23)";
+    else if (missionStatus === "PATIENT_LOADED") statusLabel = "🩺 PATIENT LOADED / EN ROUTE ED";
+    else if (missionStatus === "ARRIVED_ED") statusLabel = "🏥 ARRIVED AT ED TRAUMA BAY";
+    else if (missionStatus === "HANDOVER_COMPLETE") statusLabel = "✅ HANDOVER COMPLETE / READY";
+
+    ambulanceTierBadge.textContent = statusLabel;
+    ambulanceTierBadge.className = `ambulance-tier-badge ${isAls ? "tier-als" : "tier-bls"} status-${missionStatus.toLowerCase().replace(/_/g, '-')}`;
+
+    ambulanceCallsign.textContent = unit.unit_id;
+    ambulanceVehicleNo.textContent = unit.vehicle_number;
+    ambulanceAcuityTag.textContent = unit.unit_type;
+    ambulanceAcuityTag.className = `unit-acuity-tag ${isAls ? "als" : "bls"}`;
+
+    ambulanceBaseStation.textContent = unit.base_station;
+    ambulanceEtaToScene.textContent = `${unit.eta_to_scene_minutes} mins`;
+    ambulanceDistToScene.textContent = `(${unit.distance_to_scene_km} km via ${unit.routing_source || 'OSRM'})`;
+
+    ambulanceParamedicName.textContent = unit.crew_lead_paramedic;
+    ambulancePilotName.textContent = unit.pilot_driver;
+    ambulancePilotPhone.textContent = unit.pilot_contact;
+
+    // Equipment pills
+    ambulanceEquipmentPills.innerHTML = "";
+    (unit.equipment_manifest || []).forEach((eq) => {
+      const pill = document.createElement("span");
+      const isCritical = isAls && (eq.toLowerCase().includes("ventilator") || eq.toLowerCase().includes("defibrillator"));
+      pill.className = `equip-pill ${isCritical ? "equip-als" : ""}`;
+      pill.textContent = eq;
+      ambulanceEquipmentPills.appendChild(pill);
+    });
+
+    ambulanceParamedicNotes.textContent = amb.paramedic_handover_notes || "En route to incident scene.";
+    ambulanceTicketRef.textContent = `TICKET: ${amb.callout_ticket_id || 'PENDING'}`;
+    if (btnViewCalloutTicket) btnViewCalloutTicket.disabled = false;
+
+    // Driver companion button
+    const btnOpenDriver = document.getElementById("btn-open-driver-companion");
+    if (btnOpenDriver && amb.callout_ticket_id) {
+      btnOpenDriver.href = `/driver/${encodeURIComponent(amb.callout_ticket_id)}`;
+      btnOpenDriver.style.display = "inline-flex";
+    }
+  } else if (ambulanceTierBadge) {
+    ambulanceTierBadge.textContent = "AWAITING ALLOCATION";
+    ambulanceTierBadge.className = "ambulance-tier-badge";
+    ambulanceCallsign.textContent = "AMB-108-XX";
+    ambulanceVehicleNo.textContent = "TN-XX-XX-XXXX";
+    ambulanceAcuityTag.textContent = "PENDING";
+    ambulanceAcuityTag.className = "unit-acuity-tag";
+    ambulanceBaseStation.textContent = "Awaiting dispatch";
+    ambulanceEtaToScene.textContent = "-- mins";
+    ambulanceDistToScene.textContent = "(-- km)";
+    ambulanceParamedicName.textContent = "-";
+    ambulancePilotName.textContent = "-";
+    ambulancePilotPhone.textContent = "-";
+    ambulanceEquipmentPills.innerHTML = `<span class="tag-empty">Awaiting fleet dispatch...</span>`;
+    ambulanceParamedicNotes.textContent = "Awaiting incident dispatch and routing calculation...";
+    ambulanceTicketRef.textContent = "TICKET: PENDING";
+    if (btnViewCalloutTicket) btnViewCalloutTicket.disabled = true;
+
+    const btnOpenDriver = document.getElementById("btn-open-driver-companion");
+    if (btnOpenDriver) btnOpenDriver.style.display = "none";
+  }
+
   // Update Pipeline Tracker
   updatePipelineTracker(audit.execution_stage);
+
+  // Update Tactical Corridor Map & Highway Route
+  updateCorridorMap(state);
 }
+
+function initCorridorMap() {
+  const mapElem = document.getElementById("corridor-map-container");
+  if (!mapElem || typeof L === "undefined") return;
+
+  try {
+    // Default center: Chennai South / Tambaram Corridor (12.96, 80.18)
+    corridorMap = L.map("corridor-map-container", {
+      center: [12.96, 80.18],
+      zoom: 11,
+      zoomControl: true,
+      attributionControl: false
+    });
+
+    // Standard OpenStreetMap tiles with dark tactical CSS filter (no API key required)
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "© OpenStreetMap contributors"
+    }).addTo(corridorMap);
+
+    // Click anywhere on tactical corridor map to drop incident spot & open simulation
+    corridorMap.on("click", (e) => {
+      const lat = e.latlng.lat;
+      const lon = e.latlng.lng;
+      const popupHtml = `
+        <div style="font-family:var(--font-sans); font-size:0.78rem; padding:4px 2px; color:#e2e8f0; min-width:180px;">
+          <div style="font-weight:700; color:#38bdf8; margin-bottom:4px;">📍 Incident Pin Drop</div>
+          <div style="font-family:var(--font-mono); font-size:0.75rem; color:#94a3b8; margin-bottom:8px;">
+            ${lat.toFixed(4)}° N, ${lon.toFixed(4)}° E
+          </div>
+          <button id="btn-quick-dispatch-spot" style="width:100%; background:linear-gradient(135deg,#ef4444,#b91c1c); color:#fff; border:none; border-radius:4px; padding:6px 10px; font-weight:700; font-size:0.75rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:4px; box-shadow:0 0 10px rgba(239,68,68,0.5);">
+            <span>🚨 Dispatch Incident Here</span>
+          </button>
+        </div>
+      `;
+      L.popup({ className: "dark-map-popup" })
+        .setLatLng([lat, lon])
+        .setContent(popupHtml)
+        .openOn(corridorMap);
+
+      setTimeout(() => {
+        const btn = document.getElementById("btn-quick-dispatch-spot");
+        if (btn) {
+          btn.onclick = () => {
+            corridorMap.closePopup();
+            modalSimulate.classList.remove("hidden");
+            initOrRefreshPickerMap();
+            if (pickerMarker && pickerMap) {
+              pickerMarker.setLatLng([lat, lon]);
+              pickerMap.setView([lat, lon], 14);
+            }
+            updateLocationFromPicker(lat, lon, true);
+          };
+        }
+      }, 80);
+    });
+
+
+    // Quick-action map header controls
+    const btnFocus = document.getElementById("btn-focus-accident");
+    if (btnFocus) {
+      btnFocus.addEventListener("click", () => {
+        if (lastIncidentLatLng && corridorMap) {
+          corridorMap.flyTo(lastIncidentLatLng, 14, { duration: 0.8 });
+        }
+      });
+    }
+
+    const btnFit = document.getElementById("btn-fit-corridor");
+    if (btnFit) {
+      btnFit.addEventListener("click", () => {
+        if (lastBoundsPoints.length > 0 && corridorMap) {
+          const bounds = L.latLngBounds(lastBoundsPoints);
+          corridorMap.fitBounds(bounds, { padding: [45, 45], maxZoom: 14 });
+        }
+      });
+    }
+  } catch (err) {
+    console.warn("Leaflet map initialization notice:", err);
+  }
+}
+
+function getCleanHospitalName(fullName) {
+  if (!fullName) return "Trauma Center";
+  let name = fullName.trim();
+  name = name.replace(/^Government Hospital\s+/i, "GH ")
+             .replace(/^Government\s+/i, "Govt ")
+             .replace(/Speciality Hospital/i, "Hospital")
+             .replace(/Medical College & Hospital/i, "MCH")
+             .replace(/Memorial Hospital/i, "Hospital");
+  if (name.length > 18) {
+    return name.substring(0, 16) + "...";
+  }
+  return name;
+}
+
+window.promptRerouteHospital = function(hospId, hospName) {
+  if (!selectedCaseId) return;
+  populateAndOpenOverrideModal();
+  const selectHosp = document.getElementById("select-override-hospital");
+  if (selectHosp) {
+    selectHosp.value = hospId;
+  }
+  const notesField = document.getElementById("input-override-notes");
+  if (notesField) {
+    notesField.value = `Dispatcher tactical re-route to ${hospName || hospId} via Live Corridor Map selection.`;
+  }
+};
+
+function updateCorridorMap(state) {
+  if (!corridorMap || !state || !state.input_data) return;
+
+  const loc = state.input_data.location;
+  if (!loc || !loc.latitude || !loc.longitude) return;
+
+  const incidentLat = loc.latitude;
+  const incidentLon = loc.longitude;
+  const hospState = state.hospital_fhir || {};
+  const selectedId = hospState.selected_hospital_id;
+  const acuity = (state.triage?.acuity_level || "RED").toUpperCase();
+
+  lastIncidentLatLng = [incidentLat, incidentLon];
+
+  // 1. Clear previous layers
+  if (incidentMarker) {
+    corridorMap.removeLayer(incidentMarker);
+    incidentMarker = null;
+  }
+  if (incidentPerimeter) {
+    corridorMap.removeLayer(incidentPerimeter);
+    incidentPerimeter = null;
+  }
+  hospitalMarkers.forEach((m) => corridorMap.removeLayer(m));
+  hospitalMarkers = [];
+  if (ambulanceMarker) {
+    corridorMap.removeLayer(ambulanceMarker);
+    ambulanceMarker = null;
+  }
+  if (ambulanceRouteLine) {
+    corridorMap.removeLayer(ambulanceRouteLine);
+    ambulanceRouteLine = null;
+  }
+  if (routePolyline) {
+    corridorMap.removeLayer(routePolyline);
+    routePolyline = null;
+  }
+
+  // 2. Incident Beacon: Urgent Pulsing Radar Marker
+  const isRed = acuity === "RED";
+  const isYellow = acuity === "YELLOW";
+  const hazardIcon = isRed ? "🚨" : (isYellow ? "⚠️" : "ℹ️");
+  const waveClass = isYellow ? "yellow-acuity" : "";
+
+  const incidentIcon = L.divIcon({
+    className: "custom-incident-wrapper",
+    html: `
+      <div class="urgent-incident-marker">
+        <div class="urgent-wave ring-1 ${waveClass}"></div>
+        <div class="urgent-wave ring-2 ${waveClass}"></div>
+        <div class="urgent-shield ${waveClass}">
+          <span class="urgent-icon">${hazardIcon}</span>
+        </div>
+        <div class="incident-tag-label acuity-${acuity}">
+          ${hazardIcon} ${escapeHtml(acuity)} ACCIDENT
+        </div>
+      </div>
+    `,
+    iconSize: [40, 40],
+    iconAnchor: [20, 20]
+  });
+
+  incidentMarker = L.marker([incidentLat, incidentLon], { icon: incidentIcon, zIndexOffset: 1200 })
+    .addTo(corridorMap)
+    .bindPopup(`
+      <div style="font-size:0.82rem; font-family:var(--font-sans); line-height:1.45; min-width:210px;">
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+          <span style="background:#ff3b30; color:#fff; font-weight:800; font-size:0.68rem; padding:2px 6px; border-radius:4px;">URGENT ACCIDENT SCENE</span>
+          <span class="badge ${isRed ? 'badge-acuity-red' : (isYellow ? 'badge-acuity-yellow' : 'badge-acuity-green')}">${escapeHtml(acuity)}</span>
+        </div>
+        <strong style="color:#ffffff; font-size:0.9rem;">${escapeHtml(loc.address_or_landmark)}</strong><br/>
+        <span style="color:var(--text-secondary); font-size:0.75rem;">Case: <code>${escapeHtml(state.input_data.case_id)}</code></span><br/>
+        <div style="margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.1); font-size:0.75rem; color:var(--text-secondary);">
+          <strong>GPS Coordinates:</strong> ${incidentLat.toFixed(4)}° N, ${incidentLon.toFixed(4)}° E<br/>
+          <strong>Hard-SOS Flag:</strong> ${state.triage?.hard_sos ? '⚡ Active' : 'Normal Protocol'}
+        </div>
+      </div>
+    `);
+
+  // 2.5 Golden Hour 5km Catchment Perimeter Ring
+  const ringColor = isRed ? "#ef4444" : (isYellow ? "#f59e0b" : "#10b981");
+  incidentPerimeter = L.circle([incidentLat, incidentLon], {
+    radius: 5000,
+    color: ringColor,
+    fillColor: ringColor,
+    fillOpacity: 0.06,
+    weight: 1.5,
+    dashArray: "6, 6"
+  }).addTo(corridorMap);
+
+  const boundsPoints = [[incidentLat, incidentLon]];
+
+  // 3. Merge All Nearby Candidate Hospitals (Top Candidates + Raw Discovered)
+  const hospMap = new Map();
+  (hospState.candidate_hospitals || []).forEach((h) => {
+    if (h.latitude && h.longitude) hospMap.set(h.hospital_id, h);
+  });
+  (hospState.raw_candidates || []).forEach((h) => {
+    if (h.latitude && h.longitude && !hospMap.has(h.hospital_id)) {
+      hospMap.set(h.hospital_id, h);
+    }
+  });
+  const allHospitals = Array.from(hospMap.values());
+
+  let targetCandidate = null;
+
+  allHospitals.forEach((c) => {
+    if (!c.latitude || !c.longitude) return;
+
+    const isSelected = c.hospital_id === selectedId;
+    const cleanName = getCleanHospitalName(c.name);
+    const traumaCls = c.trauma_level === "LEVEL_1" ? "l1" : "l2";
+    const traumaLabel = c.trauma_level === "LEVEL_1" ? "L1 Trauma" : "L2 Trauma";
+    const icuBeds = c.available_icu_beds != null ? c.available_icu_beds : 0;
+    const distKm = c.driving_distance_km || (c.distance_km ? c.distance_km.toFixed(1) : "--");
+
+    if (isSelected) {
+      targetCandidate = c;
+      const etaText = c.eta_minutes ? `🚗 ${c.eta_minutes}m` : `${distKm}km`;
+
+      const destPinHtml = `
+        <div class="hospital-map-pin dest-pin">
+          <div class="pin-title-row">
+            <span class="pin-icon">🎯</span>
+            <span class="pin-name">${escapeHtml(cleanName)}</span>
+            <span class="pin-badge ${traumaCls}">${traumaLabel}</span>
+          </div>
+          <div class="pin-meta-row">
+            <span class="eta-pill">${etaText} ETA</span>
+            <span class="bed-pill">${icuBeds} ICU free</span>
+          </div>
+        </div>
+      `;
+
+      const destIcon = L.divIcon({
+        className: "custom-hospital-icon-wrapper dest-wrapper",
+        html: destPinHtml,
+        iconSize: [180, 56],
+        iconAnchor: [90, 28]
+      });
+
+      const marker = L.marker([c.latitude, c.longitude], { icon: destIcon, zIndexOffset: 1000 })
+        .addTo(corridorMap)
+        .bindPopup(`
+          <div class="hosp-map-popup">
+            <div class="hosp-popup-header">
+              <span class="badge badge-acuity-red" style="font-size:0.68rem; font-weight:800;">TARGET DESTINATION</span>
+              <span class="badge ${traumaCls === 'l1' ? 'badge-hard-sos' : 'badge-acuity-yellow'}">${traumaLabel}</span>
+            </div>
+            <strong style="color:var(--accent-cyan); font-size:0.92rem; display:block; margin:2px 0 6px;">${escapeHtml(c.name)}</strong>
+            <div class="hosp-popup-metrics">
+              <div><strong>Transit ETA:</strong> <span style="color:#00f0ff; font-weight:700;">${c.eta_minutes ? `${c.eta_minutes} mins` : '--'}</span> (${distKm} km via ${c.routing_source || 'OSRM'})</div>
+              <div><strong>ICU Capacity:</strong> <span style="color:#10b981; font-weight:700;">${icuBeds} Free</span> / ${c.total_icu_beds || 15} Total</div>
+              <div><strong>ER Trauma Bays:</strong> ${c.available_er_beds != null ? c.available_er_beds : '--'} Available</div>
+              <div><strong>Specialties:</strong> ${(c.specialties || ['Trauma', 'Neurosurgery']).slice(0, 3).join(', ')}</div>
+            </div>
+          </div>
+        `);
+
+      hospitalMarkers.push(marker);
+      boundsPoints.push([c.latitude, c.longitude]);
+
+    } else {
+      // Nearby Alternate Facility Pin
+      const nearbyPinHtml = `
+        <div class="hospital-map-pin nearby-pin">
+          <div class="pin-title-row">
+            <span class="pin-icon">🏥</span>
+            <span class="pin-name">${escapeHtml(cleanName)}</span>
+            <span class="pin-badge ${traumaCls}">${c.trauma_level === "LEVEL_1" ? "L1" : "L2"}</span>
+          </div>
+          <div class="pin-meta-row">
+            <span>📍 ${distKm}km</span>
+            <span class="bed-pill">${icuBeds} ICU</span>
+          </div>
+        </div>
+      `;
+
+      const nearbyIcon = L.divIcon({
+        className: "custom-hospital-icon-wrapper nearby-wrapper",
+        html: nearbyPinHtml,
+        iconSize: [155, 48],
+        iconAnchor: [77, 24]
+      });
+
+      const marker = L.marker([c.latitude, c.longitude], { icon: nearbyIcon, zIndexOffset: 500 })
+        .addTo(corridorMap)
+        .bindPopup(`
+          <div class="hosp-map-popup">
+            <div class="hosp-popup-header">
+              <span style="color:var(--text-secondary); font-size:0.72rem; font-weight:700;">NEARBY BACKUP FACILITY</span>
+              <span class="badge ${traumaCls === 'l1' ? 'badge-hard-sos' : 'badge-acuity-yellow'}">${traumaLabel}</span>
+            </div>
+            <strong style="color:#ffffff; font-size:0.88rem; display:block; margin:2px 0 6px;">${escapeHtml(c.name)}</strong>
+            <div class="hosp-popup-metrics">
+              <div><strong>Distance:</strong> ${distKm} km (${c.eta_minutes ? `🚗 ${c.eta_minutes}m ETA` : 'via OSRM'})</div>
+              <div><strong>Beds Available:</strong> ${icuBeds} ICU / ${c.available_er_beds || '--'} ER</div>
+            </div>
+            <button class="btn-reroute-hosp" onclick="promptRerouteHospital('${escapeHtml(c.hospital_id)}', '${escapeHtml(c.name)}')">
+              🔄 Re-route Dispatch to this Hospital
+            </button>
+          </div>
+        `);
+
+      hospitalMarkers.push(marker);
+      boundsPoints.push([c.latitude, c.longitude]);
+    }
+  });
+
+  // 3.5 Allocated Ambulance Unit Marker & Route Connection
+  const ambDispatch = state.ambulance_dispatch || {};
+  const ambUnit = ambDispatch.selected_unit;
+
+  if (ambUnit && ambUnit.latitude && ambUnit.longitude) {
+    const isAls = ambUnit.unit_type === "ALS";
+    const ambPinHtml = `
+      <div class="ambulance-map-pin">
+        <span>🚑</span>
+        <span>${escapeHtml(ambUnit.unit_id)}</span>
+        <span class="pin-badge ${isAls ? 'l1' : 'l2'}">${escapeHtml(ambUnit.unit_type)}</span>
+      </div>
+    `;
+
+    const ambIcon = L.divIcon({
+      className: "custom-ambulance-icon-wrapper",
+      html: ambPinHtml,
+      iconSize: [110, 26],
+      iconAnchor: [55, 13]
+    });
+
+    ambulanceMarker = L.marker([ambUnit.latitude, ambUnit.longitude], { icon: ambIcon, zIndexOffset: 900 })
+      .addTo(corridorMap)
+      .bindPopup(`
+        <div style="font-size:0.8rem; font-family:var(--font-sans); line-height:1.45;">
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+            <span style="color:#00f0ff; font-weight:bold;">🚑 108 CAD AMBULANCE ALLOCATED</span>
+            <span class="badge ${isAls ? 'badge-hard-sos' : 'badge-acuity-green'}">${escapeHtml(ambUnit.unit_type)}</span>
+          </div>
+          <strong>Unit:</strong> ${escapeHtml(ambUnit.unit_id)} (${escapeHtml(ambUnit.vehicle_number)})<br/>
+          <strong>Base Depot:</strong> ${escapeHtml(ambUnit.base_station)}<br/>
+          <strong>Scene ETA:</strong> <span style="color:var(--accent-cyan); font-weight:bold;">${ambUnit.eta_to_scene_minutes} mins</span> (${ambUnit.distance_to_scene_km} km via ${ambUnit.routing_source || 'OSRM'})<br/>
+          <strong>Paramedic:</strong> ${escapeHtml(ambUnit.crew_lead_paramedic)}<br/>
+          <strong>Pilot:</strong> ${escapeHtml(ambUnit.pilot_driver)} (${escapeHtml(ambUnit.pilot_contact)})
+        </div>
+      `);
+
+    // Draw dashed amber dispatch route line from ambulance depot to incident scene
+    ambulanceRouteLine = L.polyline([[ambUnit.latitude, ambUnit.longitude], [incidentLat, incidentLon]], {
+      color: "#f59e0b",
+      weight: 3,
+      opacity: 0.85,
+      dashArray: "8, 8"
+    }).addTo(corridorMap);
+
+    boundsPoints.push([ambUnit.latitude, ambUnit.longitude]);
+  }
+
+  // 4. Draw OSRM Highway Route Polyline
+  const hudTarget = document.getElementById("hud-target-hospital");
+  const hudEta = document.getElementById("hud-transit-eta");
+  const hudDist = document.getElementById("hud-driving-distance");
+
+  if (targetCandidate && targetCandidate.route_geometry && targetCandidate.route_geometry.length >= 2) {
+    const polylineCoords = targetCandidate.route_geometry;
+
+    // Glowing emergency highway corridor route
+    routePolyline = L.polyline(polylineCoords, {
+      color: "#00f0ff",
+      weight: 5,
+      opacity: 0.95,
+      lineCap: "round",
+      lineJoin: "round",
+      dashArray: "10, 8"
+    }).addTo(corridorMap);
+
+    // Update Floating Map HUD
+    if (hudTarget) hudTarget.textContent = targetCandidate.name;
+    if (hudEta) hudEta.textContent = targetCandidate.eta_minutes ? `🚗 ${targetCandidate.eta_minutes} mins` : "--";
+    if (hudDist) {
+      hudDist.textContent = `${targetCandidate.driving_distance_km || targetCandidate.distance_km} km (${targetCandidate.routing_source || 'OSRM'})`;
+    }
+  } else {
+    if (hudTarget) hudTarget.textContent = hospState.selected_hospital_name || "Nearest Trauma Facility";
+    if (hudEta) hudEta.textContent = "--";
+    if (hudDist) hudDist.textContent = "--";
+  }
+
+  // 5. Fit bounds with padding so dispatcher sees incident, hospital, and ambulance
+  lastBoundsPoints = boundsPoints;
+  if (boundsPoints.length > 0) {
+    try {
+      const bounds = L.latLngBounds(boundsPoints);
+      corridorMap.fitBounds(bounds, { padding: [55, 55], maxZoom: 13 });
+    } catch (err) {
+      console.warn("Could not fit map bounds:", err);
+    }
+  }
+}
+
 
 function updatePipelineTracker(currentStage) {
   const stepOrder = [
@@ -449,6 +1062,7 @@ function updatePipelineTracker(currentStage) {
     "step-sos",
     "step-fanout",
     "step-merge",
+    "step-ambulance",
     "step-voice",
     "step-complete"
   ];
@@ -469,21 +1083,182 @@ function updatePipelineTracker(currentStage) {
 }
 
 // =====================================================================
+// Dynamic Incident Location Picker (OSM & Nominatim Geocoding)
+// =====================================================================
+let pickerMap = null;
+let pickerMarker = null;
+let isCustomLocationSelected = false;
+let reverseGeocodeTimeout = null;
+
+function initOrRefreshPickerMap() {
+  const container = document.getElementById("incident-picker-map");
+  if (!container) return;
+
+  const latVal = parseFloat(document.getElementById("input-custom-lat")?.value) || 12.9249;
+  const lonVal = parseFloat(document.getElementById("input-custom-lon")?.value) || 80.1472;
+
+  if (!pickerMap) {
+    pickerMap = L.map("incident-picker-map", {
+      center: [latVal, lonVal],
+      zoom: 12,
+      zoomControl: true,
+      attributionControl: false
+    });
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18,
+      attribution: "© OpenStreetMap contributors"
+    }).addTo(pickerMap);
+
+    const hazardIcon = L.divIcon({
+      className: "picker-hazard-icon",
+      html: `<div class="picker-marker-dot">📍</div>`,
+      iconSize: [32, 32],
+      iconAnchor: [16, 28]
+    });
+
+    pickerMarker = L.marker([latVal, lonVal], {
+      draggable: true,
+      icon: hazardIcon
+    }).addTo(pickerMap);
+
+    pickerMarker.on("dragend", (e) => {
+      const pos = e.target.getLatLng();
+      updateLocationFromPicker(pos.lat, pos.lng, true);
+    });
+
+    pickerMap.on("click", (e) => {
+      const lat = e.latlng.lat;
+      const lon = e.latlng.lng;
+      pickerMarker.setLatLng([lat, lon]);
+      updateLocationFromPicker(lat, lon, true);
+    });
+  } else {
+    pickerMap.invalidateSize();
+    pickerMarker.setLatLng([latVal, lonVal]);
+    pickerMap.setView([latVal, lonVal], 13);
+  }
+}
+
+async function updateLocationFromPicker(lat, lon, fetchAddress = true) {
+  isCustomLocationSelected = true;
+  document.querySelectorAll(".preset-btn").forEach((b) => b.classList.remove("selected"));
+
+  const latInput = document.getElementById("input-custom-lat");
+  const lonInput = document.getElementById("input-custom-lon");
+  const landmarkInput = document.getElementById("input-custom-landmark");
+  const statusPill = document.getElementById("picker-status-pill");
+
+  if (latInput) latInput.value = lat.toFixed(5);
+  if (lonInput) lonInput.value = lon.toFixed(5);
+
+  if (statusPill) {
+    statusPill.textContent = `📍 Selected: ${lat.toFixed(4)}° N, ${lon.toFixed(4)}° E`;
+    statusPill.className = "picker-hint-badge resolving";
+  }
+
+  if (fetchAddress) {
+    if (reverseGeocodeTimeout) clearTimeout(reverseGeocodeTimeout);
+    reverseGeocodeTimeout = setTimeout(async () => {
+      try {
+        const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=16&addressdetails=1`;
+        const res = await fetch(url, {
+          headers: { "Accept-Language": "en" }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const addr = data.address || {};
+          const mainPart = addr.road || addr.suburb || addr.neighbourhood || addr.amenity || data.name || "Incident Spot";
+          const cityPart = addr.city || addr.town || addr.county || addr.state_district || "Chennai";
+          const resolvedLandmark = `${mainPart}, ${cityPart}`;
+
+          if (landmarkInput) landmarkInput.value = resolvedLandmark;
+          if (statusPill) {
+            statusPill.textContent = `📍 ${resolvedLandmark}`;
+            statusPill.className = "picker-hint-badge";
+          }
+        }
+      } catch (err) {
+        if (statusPill) {
+          statusPill.textContent = `📍 GPS Pin: ${lat.toFixed(4)}° N, ${lon.toFixed(4)}° E`;
+          statusPill.className = "picker-hint-badge";
+        }
+      }
+    }, 350);
+  }
+}
+
+async function handlePlaceSearch() {
+  const searchInput = document.getElementById("input-map-search");
+  const statusPill = document.getElementById("picker-status-pill");
+  const landmarkInput = document.getElementById("input-custom-landmark");
+  const query = searchInput ? searchInput.value.trim() : "";
+  if (!query) return;
+
+  if (statusPill) {
+    statusPill.textContent = `🔍 Searching "${query}"...`;
+    statusPill.className = "picker-hint-badge resolving";
+  }
+
+  try {
+    const qWithRegion = query.toLowerCase().includes("chennai") || query.toLowerCase().includes("tamil nadu") ? query : `${query}, Chennai`;
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(qWithRegion)}&countrycodes=in&limit=1`;
+    const res = await fetch(url, {
+      headers: { "Accept-Language": "en" }
+    });
+    if (res.ok) {
+      const results = await res.json();
+      if (results.length > 0) {
+        const r = results[0];
+        const lat = parseFloat(r.lat);
+        const lon = parseFloat(r.lon);
+
+        if (pickerMap && pickerMarker) {
+          pickerMarker.setLatLng([lat, lon]);
+          pickerMap.setView([lat, lon], 14);
+        }
+
+        const cleanName = r.display_name.split(",").slice(0, 3).join(",");
+        if (landmarkInput) landmarkInput.value = cleanName;
+
+        updateLocationFromPicker(lat, lon, false);
+        if (statusPill) {
+          statusPill.textContent = `📍 Located: ${cleanName}`;
+          statusPill.className = "picker-hint-badge";
+        }
+      } else {
+        alert(`Location "${query}" not found. You can click directly anywhere on the map.`);
+        if (statusPill) {
+          statusPill.textContent = `📍 Click map to drop beacon`;
+          statusPill.className = "picker-hint-badge";
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Place search failed:", err);
+  }
+}
+
+// =====================================================================
 // Actions & Handlers
 // =====================================================================
 async function handleDispatchSimulation() {
   const customNarrative = document.getElementById("input-custom-narrative").value.trim();
   const customLandmark = document.getElementById("input-custom-landmark").value.trim();
   const customPhone = document.getElementById("input-custom-phone").value.trim();
+  const customDistrict = document.getElementById("input-custom-district")?.value || "Chennai";
+  const customLat = parseFloat(document.getElementById("input-custom-lat")?.value);
+  const customLon = parseFloat(document.getElementById("input-custom-lon")?.value);
 
   let payload = {};
-  if (customNarrative) {
+  if (isCustomLocationSelected || customNarrative) {
     payload = {
-      custom_input: customNarrative,
-      landmark: customLandmark || "Tambaram Signal, Chennai",
+      custom_input: customNarrative || `Emergency road accident reported at ${customLandmark || 'Scene'}. Urgent medical trauma team dispatched.`,
+      landmark: customLandmark || "Chennai Metro Corridor",
       caller_phone: customPhone || "+91 94441 23456",
-      latitude: 12.9249,
-      longitude: 80.1472
+      district: customDistrict,
+      latitude: !isNaN(customLat) ? customLat : 12.9249,
+      longitude: !isNaN(customLon) ? customLon : 80.1472
     };
   } else {
     payload = { preset_key: selectedPresetKey };
@@ -509,9 +1284,10 @@ async function handleDispatchSimulation() {
     alert("Simulation dispatch failed: " + err.message);
   } finally {
     btnSubmitSimulation.disabled = false;
-    btnSubmitSimulation.textContent = "Dispatch Incident";
+    btnSubmitSimulation.textContent = "🚨 Ingest & Dispatch CAD Incident";
   }
 }
+
 
 async function handleSimulateWebhook() {
   if (!selectedCaseId) return;
@@ -651,6 +1427,9 @@ function setupAnalyticsTab() {
       tabAnalytics.classList.remove("active");
       viewConsole.classList.remove("hidden");
       viewAnalytics.classList.add("hidden");
+      if (corridorMap) {
+        setTimeout(() => corridorMap.invalidateSize(), 150);
+      }
     });
 
     tabAnalytics.addEventListener("click", () => {
@@ -1095,4 +1874,111 @@ function handleDownloadSingleSlipJson() {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+// =====================================================================
+// 108 CAD Ambulance Callout Ticket Controller
+// =====================================================================
+async function openCalloutTicketModal(caseId) {
+  if (!caseId) return;
+  try {
+    const res = await fetch(`/api/cases/${caseId}/callout`);
+    if (!res.ok) throw new Error("Could not retrieve ambulance callout ticket");
+    const ticket = await res.json();
+
+    if (ticket.status === "AWAITING_ALLOCATION") {
+      alert("Ambulance allocation is still pending for this incident.");
+      return;
+    }
+
+    // Populate modal ticket sheet
+    if (ticketModalId) ticketModalId.textContent = ticket.callout_ticket_id || `CALLOUT-108-${caseId}`;
+    if (ticketModalTime) {
+      ticketModalTime.textContent = ticket.dispatch_timestamp
+        ? new Date(ticket.dispatch_timestamp).toLocaleTimeString()
+        : new Date().toLocaleTimeString();
+    }
+
+    if (ticketCaseId) ticketCaseId.textContent = ticket.case_id || caseId;
+    if (ticketAcuity) ticketAcuity.textContent = `${ticket.acuity_level} (${ticket.unit_type_required} REQUIRED)`;
+    if (ticketLocation) ticketLocation.textContent = ticket.incident_location?.address || "Chennai South Corridor";
+    if (ticketGps) {
+      const lat = ticket.incident_location?.latitude;
+      const lon = ticket.incident_location?.longitude;
+      ticketGps.textContent = lat && lon ? `${lat.toFixed(4)}° N, ${lon.toFixed(4)}° E` : "-";
+    }
+    if (ticketCallerPhone) ticketCallerPhone.textContent = ticket.caller_phone || "Unknown";
+
+    const unit = ticket.allocated_unit || {};
+    if (ticketUnitCallsign) ticketUnitCallsign.textContent = unit.unit_id || "AMB-108";
+    if (ticketVehNo) ticketVehNo.textContent = unit.vehicle_number || "-";
+    if (ticketTier) ticketTier.textContent = `${unit.unit_type || 'ALS'} (${unit.unit_type === 'ALS' ? 'Advanced Life Support' : 'Basic Life Support'})`;
+    if (ticketDepot) ticketDepot.textContent = unit.base_station || "-";
+    if (ticketEta) {
+      ticketEta.textContent = `${unit.eta_to_scene_minutes || '--'} mins (${unit.distance_to_scene_km || '--'} km via ${unit.routing_source || 'OSRM'})`;
+    }
+
+    const dest = ticket.destination_hospital || {};
+    if (ticketDestHospital) {
+      const etaStr = dest.eta_minutes ? ` [🚗 ${dest.eta_minutes}m ETA via ${dest.routing_source || 'OSRM'}]` : "";
+      ticketDestHospital.textContent = `${dest.name || 'Emergency Department'}${etaStr} • ${dest.trauma_level || 'LEVEL_1'}`;
+    }
+
+    const crew = ticket.crew_roster || {};
+    if (ticketParamedic) ticketParamedic.textContent = crew.lead_paramedic || "-";
+    if (ticketPilot) ticketPilot.textContent = crew.pilot_driver || "-";
+    if (ticketPilotPhone) ticketPilotPhone.textContent = crew.pilot_contact || "-";
+
+    // Equipment pills
+    if (ticketEquipManifest) {
+      ticketEquipManifest.innerHTML = "";
+      const isAls = unit.unit_type === "ALS";
+      (unit.equipment_manifest || []).forEach((eq) => {
+        const pill = document.createElement("span");
+        const isCritical = isAls && (eq.toLowerCase().includes("ventilator") || eq.toLowerCase().includes("defibrillator"));
+        pill.className = `equip-pill ${isCritical ? "equip-als" : ""}`;
+        pill.textContent = eq;
+        ticketEquipManifest.appendChild(pill);
+      });
+    }
+
+    if (ticketDrivingDirections) {
+      ticketDrivingDirections.textContent = ticket.turn_by_turn_route || `Depart ${unit.base_station || 'Depot'} -> Proceed via fastest highway route to ${ticket.incident_location?.address || 'Incident Scene'}`;
+    }
+    if (ticketHandoverBrief) {
+      ticketHandoverBrief.textContent = ticket.paramedic_handover_briefing || "En route to scene. Prepare airway stabilization on arrival.";
+    }
+
+    // Live QR Code and mobile companion deep link
+    const qrImg = document.getElementById("ticket-qr-img");
+    const qrLink = document.getElementById("ticket-qr-link");
+    const targetTicket = ticket.callout_ticket_id || `CALLOUT-108-${caseId}`;
+
+    if (qrImg) {
+      qrImg.src = ticket.driver_qr_url || `/api/driver/${encodeURIComponent(targetTicket)}/qr?t=${Date.now()}`;
+    }
+    if (qrLink) {
+      const compUrl = ticket.mobile_companion_url || `${window.location.origin}/driver/${encodeURIComponent(targetTicket)}`;
+      qrLink.href = compUrl;
+      qrLink.textContent = compUrl;
+    }
+
+    const btnModalDriver = document.getElementById("btn-modal-open-driver");
+    if (btnModalDriver) {
+      if (ticket.callout_ticket_id) {
+        btnModalDriver.href = `/driver/${encodeURIComponent(ticket.callout_ticket_id)}`;
+        btnModalDriver.style.display = "inline-flex";
+      } else {
+        btnModalDriver.style.display = "none";
+      }
+    }
+
+    if (modalCalloutTicket) {
+      modalCalloutTicket.classList.remove("hidden");
+    }
+
+  } catch (err) {
+    alert("Error loading callout ticket: " + err.message);
+  }
+}
+
 

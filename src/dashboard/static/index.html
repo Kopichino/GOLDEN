@@ -8,6 +8,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Leaflet.js Tactical Corridor Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body class="dark-theme">
@@ -141,9 +144,9 @@
       <div class="pipeline-card" id="pipeline-tracker-card">
         <div class="pipeline-title">GOLDEN Orchestration Flow & Dependency Graph</div>
         <div class="pipeline-steps" id="pipeline-steps-container">
-          <div class="step-item" id="step-ingest">
+          <div class="step-item active" id="step-ingest">
             <div class="step-icon">1</div>
-            <div class="step-text">Ingestion</div>
+            <div class="step-text">Incident Intake</div>
           </div>
           <div class="step-connector"></div>
           <div class="step-item" id="step-sos">
@@ -161,14 +164,64 @@
             <div class="step-text">Hospital Acuity Match</div>
           </div>
           <div class="step-connector"></div>
-          <div class="step-item" id="step-voice">
+          <div class="step-item" id="step-ambulance">
             <div class="step-icon">5</div>
+            <div class="step-text">Ambulance Fleet CAD</div>
+          </div>
+          <div class="step-connector"></div>
+          <div class="step-item" id="step-voice">
+            <div class="step-icon">6</div>
             <div class="step-text">FHIR & Family Outreach</div>
           </div>
           <div class="step-connector"></div>
           <div class="step-item" id="step-complete">
-            <div class="step-icon">6</div>
+            <div class="step-icon">7</div>
             <div class="step-text">Dispatcher Review</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Tactical Corridor Map & Highway Route (Leaflet.js + OSRM) -->
+      <div class="tactical-map-card" id="tactical-corridor-map-card">
+          <div class="card-head map-header-flex">
+            <div class="card-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon>
+                <line x1="8" y1="2" x2="8" y2="18"></line>
+                <line x1="16" y1="6" x2="16" y2="22"></line>
+              </svg>
+              <span>Live Corridor Tactical Map & Healthcare Network</span>
+            </div>
+            <div class="map-head-actions">
+              <div class="map-hud-legend">
+                <span class="hud-chip chip-incident"><span class="pulse-beacon-dot"></span> ⚠️ Accident Scene</span>
+                <span class="hud-chip chip-hosp-dest">🎯 Destination Hospital</span>
+                <span class="hud-chip chip-hosp-nearby">🏥 Nearby Facilities</span>
+                <span class="hud-chip chip-amb">🚑 108 Unit</span>
+                <span class="hud-chip chip-osrm-route">🛣️ OSRM Route</span>
+                <span class="hud-chip chip-perimeter">⭕ 5km Catchment</span>
+              </div>
+              <div class="map-quick-buttons">
+                <button class="btn-map-control" id="btn-focus-accident" title="Center on Accident Scene">📍 Focus Incident</button>
+                <button class="btn-map-control" id="btn-fit-corridor" title="Fit Entire Incident Corridor">🗺️ Fit Corridor</button>
+              </div>
+            </div>
+          </div>
+        <div class="map-container-wrap">
+          <div id="corridor-map-container"></div>
+          <div class="map-overlay-hud" id="map-overlay-hud">
+            <div class="hud-stat">
+              <span class="hud-label">TARGET FACILITY</span>
+              <span class="hud-val" id="hud-target-hospital">Awaiting selection</span>
+            </div>
+            <div class="hud-stat">
+              <span class="hud-label">TRANSIT ETA</span>
+              <span class="hud-val text-cyan" id="hud-transit-eta">-- mins</span>
+            </div>
+            <div class="hud-stat">
+              <span class="hud-label">ROAD DISTANCE</span>
+              <span class="hud-val" id="hud-driving-distance">-- km (OSRM)</span>
+            </div>
           </div>
         </div>
       </div>
@@ -295,6 +348,89 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
                 <span>Simulate Caller Webhook Callback</span>
               </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 5: Ambulance Fleet Allocation (108 CAD) -->
+        <div class="specialist-card ambulance-card">
+          <div class="card-head">
+            <div class="card-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10 17h4V5H2v12h3m5 0a2 2 0 1 0 4 0m-4 0a2 2 0 1 1 4 0m5-5h3l3 4v3h-2m-4 0a2 2 0 1 0 4 0m-4 0a2 2 0 1 1 4 0M6 10h4M8 8v4"/>
+              </svg>
+              <span>Ambulance Fleet Allocation (108 Tamil Nadu CAD)</span>
+            </div>
+            <span class="ambulance-tier-badge" id="ambulance-tier-badge">AWAITING ALLOCATION</span>
+          </div>
+          <div class="card-body">
+            <div class="ambulance-overview-grid">
+              <div class="ambulance-unit-box">
+                <div class="unit-callsign-row">
+                  <span class="unit-callsign" id="ambulance-callsign">AMB-108-XX</span>
+                  <span class="unit-veh-no font-mono" id="ambulance-vehicle-no">TN-XX-XX-XXXX</span>
+                  <span class="unit-acuity-tag" id="ambulance-acuity-tag">ALS</span>
+                </div>
+                <div class="unit-station-row">
+                  <span class="meta-label">Base Depot:</span>
+                  <span class="meta-val" id="ambulance-base-station">Awaiting dispatch</span>
+                </div>
+                <div class="unit-eta-row">
+                  <span class="meta-label">En-Route ETA to Scene:</span>
+                  <span class="meta-val text-cyan font-bold" id="ambulance-eta-to-scene">-- mins</span>
+                  <span class="meta-sub" id="ambulance-dist-to-scene">(-- km via OSRM)</span>
+                </div>
+              </div>
+
+              <div class="ambulance-crew-box">
+                <div class="crew-item">
+                  <span class="crew-role">Lead Paramedic:</span>
+                  <span class="crew-name font-bold" id="ambulance-paramedic-name">-</span>
+                </div>
+                <div class="crew-item">
+                  <span class="crew-role">Pilot / Driver:</span>
+                  <span class="crew-name" id="ambulance-pilot-name">-</span>
+                </div>
+                <div class="crew-item">
+                  <span class="crew-role">Pilot Radio / Mobile:</span>
+                  <span class="crew-name font-mono text-cyan" id="ambulance-pilot-phone">-</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="ambulance-equip-section">
+              <div class="equip-label">Critical Life Support Onboard Manifest:</div>
+              <div class="equip-pills-wrap" id="ambulance-equipment-pills">
+                <span class="tag-empty">Equipment manifest loading...</span>
+              </div>
+            </div>
+
+            <div class="ambulance-briefing-box">
+              <div class="briefing-label">Paramedic Clinical Handover Briefing:</div>
+              <div class="briefing-content font-mono" id="ambulance-paramedic-notes">
+                Awaiting incident dispatch and routing calculation...
+              </div>
+            </div>
+
+            <div class="ambulance-footer-actions">
+              <button class="btn-primary btn-callout-ticket" id="btn-view-callout-ticket" disabled>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                  <polyline points="10 9 9 9 8 9"></polyline>
+                </svg>
+                <span>View Official 108 Callout Ticket</span>
+              </button>
+              <a class="btn-secondary btn-driver-companion" id="btn-open-driver-companion" target="_blank" href="#" style="display:none; text-decoration:none;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+                  <line x1="12" y1="18" x2="12.01" y2="18"></line>
+                </svg>
+                <span>Driver Mobile View 📱</span>
+              </a>
+              <span class="callout-ticket-ref font-mono" id="ambulance-ticket-ref">TICKET: PENDING</span>
             </div>
           </div>
         </div>
@@ -661,53 +797,103 @@
 
   <!-- Modal: Simulate Incident -->
   <div class="modal-overlay hidden" id="modal-simulate">
-    <div class="modal-content">
+    <div class="modal-content modal-simulate-xl">
       <div class="modal-header">
-        <h3>Simulate Inbound Emergency Call (108/112)</h3>
+        <div class="modal-title-wrap">
+          <h3>Simulate Inbound Emergency Call (108/112 CAD)</h3>
+          <p class="modal-subtitle">Trigger dynamic incident ingestion from any coordinate across Chennai or peripheral highways</p>
+        </div>
         <button class="modal-close" id="btn-close-simulate-modal">&times;</button>
       </div>
       <div class="modal-body">
-        <p class="modal-intro">Choose a pre-configured Chennai South emergency scenario or customize your own:</p>
-        
-        <div class="preset-cards-grid" id="preset-buttons-container">
-          <button class="preset-btn" data-preset="tambaram_femur_crash">
-            <span class="preset-badge red">CRITICAL TRAUMA</span>
-            <strong>Tambaram Flyover Polytrauma</strong>
-            <p>Two-wheeler vs median, femur fracture, arterial bleeding, conscious.</p>
-          </button>
-          <button class="preset-btn" data-preset="guindy_cardiac_arrest">
-            <span class="preset-badge red">HARD-SOS BYPASS</span>
-            <strong>Guindy Factory Cardiac Arrest</strong>
-            <p>Unresponsive male, CPR in progress, immediate Level 1 bypass.</p>
-          </button>
-          <button class="preset-btn" data-preset="omr_concussion">
-            <span class="preset-badge yellow">URGENT</span>
-            <strong>OMR Thoraipakkam Skid</strong>
-            <p>Motorcyclist skid, forehead laceration, dizziness, ambulatory.</p>
-          </button>
+        <div class="preset-section">
+          <div class="section-label-row">
+            <span class="section-label">PRE-CONFIGURED BENCHMARK SCENARIOS</span>
+            <span class="text-dim text-xs">Quick 1-Click Load</span>
+          </div>
+          <div class="preset-cards-grid" id="preset-buttons-container">
+            <button class="preset-btn" data-preset="tambaram_femur_crash">
+              <span class="preset-badge red">CRITICAL TRAUMA</span>
+              <strong>Tambaram Flyover Polytrauma</strong>
+              <p>Two-wheeler vs median, femur fracture, arterial bleeding, conscious.</p>
+            </button>
+            <button class="preset-btn" data-preset="guindy_cardiac_arrest">
+              <span class="preset-badge red">HARD-SOS BYPASS</span>
+              <strong>Guindy Factory Cardiac Arrest</strong>
+              <p>Unresponsive male, CPR in progress, immediate Level 1 bypass.</p>
+            </button>
+            <button class="preset-btn" data-preset="omr_concussion">
+              <span class="preset-badge yellow">URGENT</span>
+              <strong>OMR Thoraipakkam Skid</strong>
+              <p>Motorcyclist skid, forehead laceration, dizziness, ambulatory.</p>
+            </button>
+          </div>
         </div>
 
-        <div class="form-divider"><span>OR CUSTOM INCIDENT</span></div>
+        <div class="form-divider"><span>OR PINPOINT ACCIDENT ANYWHERE ON LIVE MAP</span></div>
 
+        <!-- Dynamic Location Picker Map & Search -->
+        <div class="location-picker-group">
+          <div class="picker-header-row">
+            <label class="picker-label">Incident GPS Coordinates & Landmark:</label>
+            <span class="picker-hint-badge" id="picker-status-pill">📍 Click anywhere on map to drop accident beacon</span>
+          </div>
+
+          <div class="map-search-bar">
+            <div class="search-input-wrapper">
+              <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input type="text" id="input-map-search" placeholder="Search area in Chennai (e.g. Koyambedu, Anna Nagar, Marina Beach, Velachery)...">
+            </div>
+            <button type="button" class="btn-locate" id="btn-map-search">
+              <span>Locate Place</span>
+            </button>
+          </div>
+
+          <div id="incident-picker-map" class="incident-picker-map"></div>
+
+          <div class="form-row coords-row">
+            <div class="form-group flex-2">
+              <label for="input-custom-landmark">Auto-Resolved Landmark / Highway Address:</label>
+              <input type="text" id="input-custom-landmark" placeholder="Click map or search place above..." value="Tambaram Flyover, GST Road, Chennai">
+            </div>
+            <div class="form-group flex-1">
+              <label for="input-custom-lat">Latitude (°N):</label>
+              <input type="number" step="any" id="input-custom-lat" value="12.9249">
+            </div>
+            <div class="form-group flex-1">
+              <label for="input-custom-lon">Longitude (°E):</label>
+              <input type="number" step="any" id="input-custom-lon" value="80.1472">
+            </div>
+          </div>
+        </div>
+
+        <!-- Narrative and Caller Info -->
         <div class="form-group">
-          <label for="input-custom-narrative">Verbatim Incident Description:</label>
-          <textarea id="input-custom-narrative" rows="3" placeholder="Describe patient symptoms, mechanism of injury, consciousness..."></textarea>
+          <label for="input-custom-narrative">Verbatim Emergency Call Transcript / Symptoms:</label>
+          <textarea id="input-custom-narrative" rows="2" placeholder="Describe patient condition, mechanism of trauma, conscious state, vital instability..."></textarea>
         </div>
 
         <div class="form-row">
-          <div class="form-group">
-            <label for="input-custom-landmark">Corridor Landmark:</label>
-            <input type="text" id="input-custom-landmark" placeholder="e.g. Chromepet Signal, Chennai">
-          </div>
-          <div class="form-group">
-            <label for="input-custom-phone">Caller Contact:</label>
+          <div class="form-group flex-1">
+            <label for="input-custom-phone">Caller Contact (108 Telephony):</label>
             <input type="text" id="input-custom-phone" value="+91 94441 23456">
+          </div>
+          <div class="form-group flex-1">
+            <label for="input-custom-district">Administrative District:</label>
+            <select id="input-custom-district">
+              <option value="Chennai" selected>Chennai Metropolitan</option>
+              <option value="Chengalpattu">Chengalpattu District</option>
+              <option value="Kanchipuram">Kanchipuram District</option>
+              <option value="Thiruvallur">Thiruvallur District</option>
+            </select>
           </div>
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn-ghost" id="btn-cancel-simulate">Cancel</button>
-        <button class="btn-primary" id="btn-submit-simulation">Dispatch Incident</button>
+        <button class="btn-primary btn-dispatch-glow" id="btn-submit-simulation">
+          <span>🚨 Ingest & Dispatch CAD Incident</span>
+        </button>
       </div>
     </div>
   </div>
@@ -768,6 +954,113 @@
       </div>
       <div class="modal-footer">
         <button class="btn-secondary" id="btn-close-fhir-viewer">Close Inspector</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: 108 Ambulance CAD Callout Ticket -->
+  <div class="modal-overlay hidden" id="modal-callout-ticket">
+    <div class="modal-content modal-callout">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00f0ff" stroke-width="2">
+            <path d="M10 17h4V5H2v12h3m5 0a2 2 0 1 0 4 0m-4 0a2 2 0 1 1 4 0m5-5h3l3 4v3h-2m-4 0a2 2 0 1 0 4 0m-4 0a2 2 0 1 1 4 0M6 10h4M8 8v4"/>
+          </svg>
+          <h3 id="callout-modal-title">EMRI 108 Emergency Ambulance CAD Callout Ticket</h3>
+        </div>
+        <button class="modal-close" id="btn-close-callout-modal">&times;</button>
+      </div>
+      <div class="modal-body callout-body" id="callout-ticket-printable">
+        <div class="ticket-sheet">
+          <div class="ticket-header-strip">
+            <div class="ticket-logo-mark">
+              <span class="badge-emri">TAMIL NADU 108 CAD</span>
+              <span class="ticket-id-val font-mono" id="ticket-modal-id">CALLOUT-108-PENDING</span>
+            </div>
+            <div class="ticket-dispatch-time font-mono" id="ticket-modal-time">TIME: --:--:--</div>
+          </div>
+
+          <!-- Live Mobile MDT / Phone Companion QR Code Banner -->
+          <div class="ticket-qr-banner">
+            <div class="qr-code-box">
+              <img id="ticket-qr-img" class="ticket-qr-img" src="" alt="108 CAD Driver Companion QR Code" />
+              <div class="qr-scan-badge">📲 SCAN WITH PHONE</div>
+            </div>
+            <div class="qr-details-box">
+              <div class="qr-headline">
+                <span class="qr-title">Field Paramedic / Driver Companion Link</span>
+                <span class="qr-live-tag">⚡ LIVE SYNC (SSE)</span>
+              </div>
+              <p class="qr-desc">
+                Scan this QR code with any smartphone camera on the local Wi-Fi to launch the live ambulance driver HUD. Any status progression tapped on the phone instantly updates this control room.
+              </p>
+              <div class="qr-url-row">
+                <span class="qr-url-label">Direct Mission Link:</span>
+                <a id="ticket-qr-link" class="qr-url-val font-mono" target="_blank" href="#">http://127.0.0.1:8000/driver/...</a>
+              </div>
+            </div>
+          </div>
+
+          <div class="ticket-grid-cols">
+            <div class="ticket-col">
+              <h4>INCIDENT SUMMARY</h4>
+              <div class="t-row"><span class="t-lbl">Case ID:</span> <span class="t-val font-mono" id="ticket-case-id">-</span></div>
+              <div class="t-row"><span class="t-lbl">Acuity Tier:</span> <span class="t-val" id="ticket-acuity">-</span></div>
+              <div class="t-row"><span class="t-lbl">Scene Location:</span> <span class="t-val" id="ticket-location">-</span></div>
+              <div class="t-row"><span class="t-lbl">GPS Coordinates:</span> <span class="t-val font-mono" id="ticket-gps">-</span></div>
+              <div class="t-row"><span class="t-lbl">Caller Phone:</span> <span class="t-val font-mono" id="ticket-caller-phone">-</span></div>
+            </div>
+
+            <div class="ticket-col">
+              <h4>ASSIGNED 108 UNIT</h4>
+              <div class="t-row"><span class="t-lbl">Unit Callsign:</span> <span class="t-val font-bold text-cyan" id="ticket-unit-callsign">-</span></div>
+              <div class="t-row"><span class="t-lbl">Vehicle Plate:</span> <span class="t-val font-mono" id="ticket-veh-no">-</span></div>
+              <div class="t-row"><span class="t-lbl">Unit Tier:</span> <span class="t-val" id="ticket-tier">-</span></div>
+              <div class="t-row"><span class="t-lbl">Base Depot:</span> <span class="t-val" id="ticket-depot">-</span></div>
+              <div class="t-row"><span class="t-lbl">Scene ETA:</span> <span class="t-val font-bold text-cyan" id="ticket-eta">-</span></div>
+            </div>
+          </div>
+
+          <div class="ticket-dest-strip">
+            <div class="dest-label">RECEIVING DESTINATION HOSPITAL:</div>
+            <div class="dest-facility" id="ticket-dest-hospital">Awaiting recommendation</div>
+          </div>
+
+          <div class="ticket-crew-strip">
+            <div class="t-row"><span class="t-lbl">Lead Paramedic:</span> <span class="t-val font-bold" id="ticket-paramedic">-</span></div>
+            <div class="t-row"><span class="t-lbl">Pilot Driver:</span> <span class="t-val" id="ticket-pilot">-</span></div>
+            <div class="t-row"><span class="t-lbl">Direct Pilot Phone:</span> <span class="t-val font-mono text-cyan" id="ticket-pilot-phone">-</span></div>
+          </div>
+
+          <div class="ticket-section">
+            <h4>CRITICAL ONBOARD EQUIPMENT</h4>
+            <div class="ticket-pills" id="ticket-equip-manifest"></div>
+          </div>
+
+          <div class="ticket-section">
+            <h4>TURN-BY-TURN ROUTE TO SCENE (OSRM)</h4>
+            <div class="ticket-instructions font-mono" id="ticket-driving-directions">-</div>
+          </div>
+
+          <div class="ticket-section">
+            <h4>PARAMEDIC CLINICAL HANDOVER NOTES</h4>
+            <div class="ticket-handover-notes font-mono" id="ticket-handover-brief">-</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-ghost" id="btn-print-callout-ticket">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 6 2 18 2 18 9"></polyline>
+            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+            <rect x="6" y="14" width="12" height="8"></rect>
+          </svg>
+          <span>Print / Save Callout Ticket</span>
+        </button>
+        <a class="btn-secondary" id="btn-modal-open-driver" target="_blank" href="#" style="text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
+          <span>📱 Open Mobile Driver View</span>
+        </a>
+        <button class="btn-secondary" id="btn-close-callout-ticket">Close Ticket</button>
       </div>
     </div>
   </div>

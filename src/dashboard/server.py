@@ -13,15 +13,20 @@ import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
+import io
+import socket
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
-from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
+import qrcode
+from qrcode.image.svg import SvgPathImage
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
 
 from src.config import settings
 from src.state.schema import (
@@ -107,6 +112,7 @@ class SimulateRequest(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     caller_phone: Optional[str] = None
+    district: Optional[str] = None
 
 class OverrideRequest(BaseModel):
     acuity_level: Optional[str] = None
@@ -121,72 +127,98 @@ class WebhookInjectRequest(BaseModel):
     conditions: List[str] = []
     summary: Optional[str] = None
 
+class DriverStatusUpdateRequest(BaseModel):
+    status: str
+    notes: Optional[str] = None
+
 @app.get("/api/events")
 async def sse_events(request: Request):
     """Server-Sent Events endpoint streaming live multi-agent updates."""
-    queue: asyncio.Queue = asyncio.Queue()
+    queue = asyncio.Queue()
     sse_subscribers.append(queue)
 
     async def event_generator():
-        # Yield recent backlog
-        for past_event in event_history[-10:]:
-            yield f"data: {json.dumps(past_event)}\n\n"
-
         try:
+            for past_event in event_history[-15:]:
+                yield f"data: {json.dumps(past_event)}\n\n"
+
             while True:
                 if await request.is_disconnected():
                     break
-                event = await queue.get()
-                yield f"data: {json.dumps(event)}\n\n"
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=20.0)
+                    yield f"data: {json.dumps(event)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": ping\n\n"
+        except asyncio.CancelledError:
+            pass
         finally:
             if queue in sse_subscribers:
                 sse_subscribers.remove(queue)
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 @app.get("/api/cases")
 def list_cases():
-    """List all tracked emergency cases with summarized statuses."""
-    items = []
-    for c_id, state in active_cases.items():
-        items.append({
-            "case_id": c_id,
-            "reported_at": state.input_data.reported_at.isoformat(),
-            "landmark": state.input_data.location.address_or_landmark,
-            "raw_input_snippet": state.input_data.raw_input[:100] + "...",
-            "acuity_level": state.triage.acuity_level,
-            "hard_sos": state.triage.hard_sos,
-            "selected_hospital": state.hospital_fhir.selected_hospital_name,
-            "distance_km": state.hospital_fhir.candidate_hospitals[0].distance_km if state.hospital_fhir.candidate_hospitals else None,
-            "call_status": state.voice_family.call_status,
-            "execution_stage": state.control_audit.execution_stage,
-            "fhir_bundle_id": state.hospital_fhir.fhir_bundle_id,
-            "ranking_reason": state.hospital_fhir.ranking_reason,
+    """Retrieve all active cases in the system."""
+    cases_summary = []
+    for case_id, state in active_cases.items():
+        inp = state.input_data
+        triage = state.triage
+        hosp = state.hospital_fhir
+        audit = state.control_audit
+        cases_summary.append({
+            "case_id": case_id,
+            "acuity": triage.acuity_level if triage else "PENDING",
+            "hard_sos": triage.hard_sos if triage else False,
+            "is_hard_sos": triage.hard_sos if triage else False,
+            "selected_hospital": hosp.selected_hospital_name if hosp else None,
+            "bed_status": hosp.bed_status if hosp else "PENDING",
+            "execution_stage": audit.execution_stage,
+            "active_provider": audit.active_provider,
+
+            "landmark": inp.location.address_or_landmark,
+            "reported_at": inp.reported_at.isoformat() if inp.reported_at else None,
+            "fhir_bundle_id": hosp.fhir_bundle_id if hosp else None
         })
-    return {"cases": items}
+    return {"cases": cases_summary, "total": len(cases_summary)}
 
 @app.get("/api/cases/{case_id}")
-def get_case_details(case_id: str):
-    """Return full state JSON for a specific emergency case."""
+def get_case(case_id: str):
+    """Retrieve full serialized state of a specific case."""
     if case_id not in active_cases:
         raise HTTPException(status_code=404, detail="Case not found")
-    return active_cases[case_id].model_dump()
+    state = active_cases[case_id]
+    return json.loads(state.model_dump_json())
 
 @app.get("/api/presets")
 def get_presets():
     """Return available scenario simulation presets."""
     return {"presets": PRESET_SCENARIOS}
 
-async def _run_simulation_task(initial_state: GoldenCaseState):
-    """Background task executing LangGraph and updating the case registry."""
+def _run_simulation_task(initial_state: GoldenCaseState):
+    """Background task running multi-agent workflow."""
     case_id = initial_state.input_data.case_id
+    
+    # Send ingestion event
     broadcast_event({
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "case_id": case_id,
-        "stage": "INGESTED",
+        "stage": "INGESTION_STARTED",
         "data": {
+            "caller_phone": initial_state.input_data.caller_phone,
+            "raw_input": initial_state.input_data.raw_input,
             "landmark": initial_state.input_data.location.address_or_landmark,
-            "raw_input": initial_state.input_data.raw_input
+            "latitude": initial_state.input_data.location.latitude,
+            "longitude": initial_state.input_data.location.longitude
         }
     })
     
@@ -209,20 +241,22 @@ async def _run_simulation_task(initial_state: GoldenCaseState):
 
 @app.post("/api/simulate")
 def trigger_simulation(req: SimulateRequest, background_tasks: BackgroundTasks):
-    """Trigger an emergency simulation from preset or custom input."""
-    if req.preset_key and req.preset_key in PRESET_SCENARIOS:
+    """Trigger an emergency simulation from preset or custom arbitrary location input."""
+    if req.preset_key and req.preset_key in PRESET_SCENARIOS and not req.latitude and not req.custom_input:
         preset = PRESET_SCENARIOS[req.preset_key]
         raw_text = preset["raw_input"]
         lat = preset["latitude"]
         lon = preset["longitude"]
         landmark = preset["address"]
+        district = preset.get("district", "Chennai")
         phone = preset["caller_phone"]
         lang = preset["language"]
     else:
-        raw_text = req.custom_input or "Emergency road accident reported near Tambaram."
-        lat = req.latitude or 12.9249
-        lon = req.longitude or 80.1472
-        landmark = req.landmark or "Tambaram Flyover, Chennai"
+        raw_text = req.custom_input or "Emergency road accident reported. Urgent trauma care needed."
+        lat = req.latitude if req.latitude is not None else 12.9249
+        lon = req.longitude if req.longitude is not None else 80.1472
+        landmark = req.landmark or "Chennai Metro Highway Corridor"
+        district = req.district or "Chennai"
         phone = req.caller_phone or "+91 94441 23456"
         lang = "en"
 
@@ -239,7 +273,7 @@ def trigger_simulation(req: SimulateRequest, background_tasks: BackgroundTasks):
                 latitude=lat,
                 longitude=lon,
                 address_or_landmark=landmark,
-                district="Chennai"
+                district=district
             )
         ),
         control_audit=ControlAudit(
@@ -406,6 +440,7 @@ def get_case_handover(case_id: str):
     triage = state.triage
     inp = state.input_data
     voice = state.voice_family
+    amb = state.ambulance_dispatch
     top_cand = hosp.candidate_hospitals[0] if hosp.candidate_hospitals else None
 
     handover_slip = {
@@ -427,6 +462,16 @@ def get_case_handover(case_id: str):
             "confidence": triage.confidence,
             "guideline_citation": triage.guideline_reference,
             "rationale": triage.rationale
+        },
+        "ambulance_dispatch": {
+            "callout_ticket_id": amb.callout_ticket_id,
+            "unit_id": amb.selected_unit.unit_id if amb.selected_unit else "AMB-108-PENDING",
+            "unit_type": amb.selected_unit.unit_type if amb.selected_unit else "ALS",
+            "vehicle_number": amb.selected_unit.vehicle_number if amb.selected_unit else "TN-07-G-1081",
+            "base_station": amb.selected_unit.base_station if amb.selected_unit else "Tambaram Hub",
+            "eta_to_scene_minutes": amb.selected_unit.eta_to_scene_minutes if amb.selected_unit else None,
+            "crew_lead_paramedic": amb.selected_unit.crew_lead_paramedic if amb.selected_unit else "EMT Paramedic",
+            "paramedic_notes": amb.paramedic_handover_notes
         },
         "receiving_facility": {
             "hospital_name": hosp.selected_hospital_name,
@@ -459,6 +504,271 @@ def get_case_handover(case_id: str):
         }
     }
     return handover_slip
+
+@app.get("/api/cases/{case_id}/callout")
+def get_ambulance_callout_ticket(case_id: str):
+    """Retrieve structured 108 ambulance dispatch callout ticket."""
+    if case_id not in active_cases:
+        raise HTTPException(status_code=404, detail="Case not found")
+    
+    state = active_cases[case_id]
+    amb = state.ambulance_dispatch
+    if not amb.selected_unit:
+        raise HTTPException(status_code=400, detail="No ambulance allocated for this case")
+    
+    unit = amb.selected_unit
+    ticket = {
+        "callout_ticket_id": amb.callout_ticket_id,
+        "case_id": case_id,
+        "acuity_tier": amb.acuity_demanded,
+        "unit_type_required": amb.acuity_demanded,
+        "acuity_level": state.triage.acuity_level or amb.acuity_demanded,
+        "caller_phone": state.input_data.caller_phone or "Unknown",
+        "dispatch_timestamp": amb.dispatch_timestamp.isoformat() if amb.dispatch_timestamp else datetime.now(timezone.utc).isoformat(),
+        "incident_location": {
+            "address": state.input_data.location.address_or_landmark,
+            "latitude": state.input_data.location.latitude,
+            "longitude": state.input_data.location.longitude
+        },
+        "target_hospital": state.hospital_fhir.selected_hospital_name,
+        "destination_hospital": {
+            "name": state.hospital_fhir.selected_hospital_name or "Receiving Hospital",
+            "trauma_level": "LEVEL_1" if state.hospital_fhir.candidate_hospitals and state.hospital_fhir.candidate_hospitals[0].trauma_level == "LEVEL_1" else "LEVEL_2",
+            "eta_minutes": state.hospital_fhir.candidate_hospitals[0].eta_minutes if state.hospital_fhir.candidate_hospitals else None,
+            "routing_source": state.hospital_fhir.candidate_hospitals[0].routing_source if state.hospital_fhir.candidate_hospitals else "OSRM"
+        },
+        "allocated_unit": {
+            "unit_id": unit.unit_id,
+            "vehicle_number": unit.vehicle_number,
+            "unit_type": unit.unit_type,
+            "base_station": unit.base_station,
+            "pilot_driver": unit.pilot_driver,
+            "pilot_contact": unit.pilot_contact,
+            "crew_lead_paramedic": unit.crew_lead_paramedic,
+            "distance_to_scene_km": unit.distance_to_scene_km,
+            "eta_to_scene_minutes": unit.eta_to_scene_minutes,
+            "equipment_manifest": unit.equipment_manifest,
+            "routing_source": unit.routing_source
+        },
+        "crew_roster": {
+            "lead_paramedic": unit.crew_lead_paramedic,
+            "pilot_driver": unit.pilot_driver,
+            "pilot_contact": unit.pilot_contact
+        },
+        "paramedic_briefing": amb.paramedic_handover_notes,
+        "paramedic_handover_briefing": amb.paramedic_handover_notes,
+        "turn_by_turn_route": "\n".join(amb.turn_by_turn_instructions),
+        "driver_route_instructions": amb.turn_by_turn_instructions,
+        "allocation_reason": amb.allocation_reason
+    }
+
+    target_ticket = amb.callout_ticket_id or f"CALLOUT-108-{case_id}"
+    lan_ip = get_lan_ip()
+    ticket["mobile_companion_url"] = f"http://{lan_ip}:8000/driver/{target_ticket}"
+    ticket["driver_qr_url"] = f"/api/driver/{target_ticket}/qr"
+    return ticket
+
+def get_lan_ip() -> str:
+    """Detect local network IP for mobile phone companion scanning over Wi-Fi."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+def _find_case_by_ticket_or_id(ticket_or_case_id: str) -> Tuple[Optional[str], Optional[GoldenCaseState]]:
+    """Look up active case either by case_id or callout_ticket_id."""
+    clean_id = ticket_or_case_id.strip()
+    if clean_id in active_cases:
+        return clean_id, active_cases[clean_id]
+    for c_id, st in active_cases.items():
+        if st.ambulance_dispatch and st.ambulance_dispatch.callout_ticket_id:
+            if st.ambulance_dispatch.callout_ticket_id.upper() == clean_id.upper():
+                return c_id, st
+    return None, None
+
+@app.get("/api/driver/{ticket_or_case_id}/qr")
+def generate_driver_qr_code(ticket_or_case_id: str, request: Request):
+    """Generate dynamic SVG QR Code linking directly to the mobile driver companion HUD."""
+    case_id, state = _find_case_by_ticket_or_id(ticket_or_case_id)
+    target_ticket_id = ticket_or_case_id
+    if state and state.ambulance_dispatch and state.ambulance_dispatch.callout_ticket_id:
+        target_ticket_id = state.ambulance_dispatch.callout_ticket_id
+
+    # Detect network host for smartphone access over Wi-Fi
+    host_header = request.headers.get("host", "127.0.0.1:8000")
+    if "localhost" in host_header or "127.0.0.1" in host_header:
+        lan_ip = get_lan_ip()
+        port = host_header.split(":")[-1] if ":" in host_header else "8000"
+        target_host = f"{lan_ip}:{port}"
+    else:
+        target_host = host_header
+
+    target_url = f"http://{target_host}/driver/{target_ticket_id}"
+
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=10,
+        border=2,
+        image_factory=SvgPathImage
+    )
+    qr.add_data(target_url)
+    qr.make(fit=True)
+    img = qr.make_image()
+
+    stream = io.BytesIO()
+    img.save(stream)
+    svg_bytes = stream.getvalue()
+
+    return Response(
+        content=svg_bytes,
+        media_type="image/svg+xml",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Target-Url": target_url
+        }
+    )
+
+@app.get("/driver/{ticket_or_case_id}", response_class=HTMLResponse)
+@app.get("/cad/driver/{ticket_or_case_id}", response_class=HTMLResponse)
+def serve_driver_companion(ticket_or_case_id: str):
+    """Serve mobile-optimized field paramedic companion web application."""
+    driver_file = STATIC_DIR / "driver.html"
+    if driver_file.exists():
+        return HTMLResponse(content=driver_file.read_text(encoding="utf-8"))
+    return HTMLResponse("<h2>Driver Companion UI generating... Please refresh in a moment.</h2>")
+
+@app.get("/api/driver/{ticket_or_case_id}")
+def get_driver_mission_data(ticket_or_case_id: str):
+    """Return complete mobile mission JSON for ambulance pilot/paramedic."""
+    case_id, state = _find_case_by_ticket_or_id(ticket_or_case_id)
+    if not state or not state.ambulance_dispatch or not state.ambulance_dispatch.selected_unit:
+        raise HTTPException(status_code=404, detail="Ambulance mission ticket not found or awaiting allocation")
+
+
+    amb = state.ambulance_dispatch
+    unit = amb.selected_unit
+    loc = state.input_data.location
+
+    # Destination Hospital details
+    top_hosp = state.hospital_fhir.candidate_hospitals[0] if state.hospital_fhir.candidate_hospitals else None
+    hosp_info = {
+        "name": state.hospital_fhir.selected_hospital_name or (top_hosp.name if top_hosp else "Receiving Trauma Center"),
+        "trauma_level": top_hosp.trauma_level if top_hosp else "LEVEL_1",
+        "eta_minutes": top_hosp.eta_minutes if top_hosp else None,
+        "driving_distance_km": top_hosp.driving_distance_km if top_hosp else (top_hosp.distance_km if top_hosp else None),
+        "available_icu_beds": top_hosp.available_icu_beds if top_hosp else 6,
+        "available_er_beds": top_hosp.available_er_beds if top_hosp else 12,
+        "specialties": getattr(top_hosp, "specialties", ["Trauma", "Critical Care", "Emergency Surgery"]),
+        "latitude": top_hosp.latitude if top_hosp else 12.9150,
+        "longitude": top_hosp.longitude if top_hosp else 80.2000,
+        "reception_phone": "+91 44 2220 9000"
+    }
+
+    # Route geometry
+    route_geom = top_hosp.route_geometry if top_hosp and top_hosp.route_geometry else None
+
+    return {
+        "ticket_id": amb.callout_ticket_id,
+        "case_id": case_id,
+        "mission_status": amb.mission_status or "DISPATCHED",
+        "acuity_level": state.triage.acuity_level or amb.acuity_demanded or "RED",
+        "hard_sos": state.triage.hard_sos,
+        "unit": {
+            "unit_id": unit.unit_id,
+            "vehicle_number": unit.vehicle_number,
+            "unit_type": unit.unit_type,
+            "base_station": unit.base_station,
+            "latitude": unit.latitude,
+            "longitude": unit.longitude,
+            "eta_to_scene_minutes": unit.eta_to_scene_minutes,
+            "distance_to_scene_km": unit.distance_to_scene_km,
+            "equipment_manifest": unit.equipment_manifest,
+            "routing_source": unit.routing_source
+        },
+        "crew": {
+            "lead_paramedic": unit.crew_lead_paramedic,
+            "pilot_driver": unit.pilot_driver,
+            "pilot_contact": unit.pilot_contact
+        },
+        "incident": {
+            "address": loc.address_or_landmark,
+            "latitude": loc.latitude,
+            "longitude": loc.longitude,
+            "caller_phone": state.input_data.caller_phone or "+91 94441 23456",
+            "narrative": state.input_data.raw_input,
+            "reported_at": state.input_data.reported_at.isoformat()
+        },
+        "hospital": hosp_info,
+        "turn_by_turn_instructions": amb.turn_by_turn_instructions,
+        "paramedic_briefing": amb.paramedic_handover_notes,
+        "route_geometry": route_geom,
+        "mission_events": amb.mission_events or []
+    }
+
+@app.post("/api/driver/{ticket_or_case_id}/status")
+def update_driver_mission_status(ticket_or_case_id: str, req: DriverStatusUpdateRequest):
+    """Advance or update the physical ambulance milestone from the field."""
+    case_id, state = _find_case_by_ticket_or_id(ticket_or_case_id)
+    if not state or not state.ambulance_dispatch or not state.ambulance_dispatch.selected_unit:
+        raise HTTPException(status_code=404, detail="Ambulance mission not found")
+
+    amb = state.ambulance_dispatch
+    old_status = amb.mission_status
+    new_status = req.status.upper().strip()
+
+    valid_statuses = [
+        "DISPATCHED",
+        "ACKNOWLEDGED",
+        "EN_ROUTE_SCENE",
+        "ON_SCENE",
+        "PATIENT_LOADED",
+        "ARRIVED_ED",
+        "HANDOVER_COMPLETE"
+    ]
+    if new_status not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status '{new_status}'. Allowed values: {valid_statuses}"
+        )
+
+    amb.mission_status = new_status
+    now_iso = datetime.now(timezone.utc).isoformat()
+    event_record = {
+        "status": new_status,
+        "previous_status": old_status,
+        "timestamp": now_iso,
+        "notes": req.notes or f"Status transitioned to {new_status} via Mobile Companion"
+    }
+    amb.mission_events.append(event_record)
+
+    # If patient handover is complete, update bed status to ADMITTED/CONFIRMED
+    if new_status in ["ARRIVED_ED", "HANDOVER_COMPLETE"]:
+        state.hospital_fhir.bed_status = "CONFIRMED"
+
+    # Broadcast event via SSE to central CAD dashboard
+    broadcast_event({
+        "event_type": "AMBULANCE_STATUS_UPDATE",
+        "timestamp": now_iso,
+        "case_id": case_id,
+        "ticket_id": amb.callout_ticket_id,
+        "unit_id": amb.selected_unit.unit_id,
+        "mission_status": new_status,
+        "previous_status": old_status,
+        "notes": req.notes
+    })
+
+    return {
+        "success": True,
+        "case_id": case_id,
+        "ticket_id": amb.callout_ticket_id,
+        "mission_status": new_status,
+        "events_count": len(amb.mission_events)
+    }
 
 @app.get("/api/audit/export")
 def export_audit_log():

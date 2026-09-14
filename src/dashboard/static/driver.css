@@ -1,0 +1,672 @@
+/* =====================================================================
+   GOLDEN 108 CAD — Field Paramedic & Pilot Companion Stylesheet
+   Mobile-Optimized Tactile AMOLED Interface
+   ===================================================================== */
+
+:root {
+  --bg-deep: #07090e;
+  --bg-surface: #0e1422;
+  --bg-card: rgba(16, 24, 40, 0.95);
+  --border-color: rgba(255, 255, 255, 0.09);
+  --border-glow: rgba(0, 240, 255, 0.3);
+  
+  --accent-cyan: #00f0ff;
+  --accent-blue: #38bdf8;
+  --accent-red: #ef4444;
+  --accent-amber: #f59e0b;
+  --accent-green: #10b981;
+  
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+  
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body.driver-body {
+  background-color: var(--bg-deep);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  line-height: 1.45;
+}
+
+/* =====================================================================
+   Top App Navigation Bar
+   ===================================================================== */
+.driver-header {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  background: rgba(10, 14, 24, 0.95);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-color);
+  padding: 0.75rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.unit-badge-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(0, 240, 255, 0.08);
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-sm);
+}
+
+.unit-callsign {
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: #ffffff;
+  letter-spacing: 0.03em;
+}
+
+.unit-tier-badge {
+  background: var(--accent-red);
+  color: #ffffff;
+  font-size: 0.65rem;
+  font-weight: 900;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.unit-tier-badge.tier-bls {
+  background: var(--accent-amber);
+  color: #000;
+}
+
+.veh-plate {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.gps-lock-status {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--accent-green);
+  background: rgba(16, 185, 129, 0.1);
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.gps-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-green);
+  box-shadow: 0 0 8px var(--accent-green);
+  animation: pulse-gps 1.8s infinite;
+}
+
+@keyframes pulse-gps {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+.header-clock {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--accent-cyan);
+}
+
+/* =====================================================================
+   Main Scrollable Container
+   ===================================================================== */
+.driver-main-container {
+  flex: 1;
+  max-width: 540px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0.85rem 0.85rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* =====================================================================
+   Acuity Hero Alert Banner
+   ===================================================================== */
+.acuity-hero-card {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.18) 0%, rgba(15, 23, 42, 0.95) 100%);
+  border: 1.5px solid rgba(239, 68, 68, 0.45);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  box-shadow: 0 4px 25px rgba(239, 68, 68, 0.2);
+}
+
+.acuity-hero-card.yellow-acuity {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.18) 0%, rgba(15, 23, 42, 0.95) 100%);
+  border-color: rgba(245, 158, 11, 0.45);
+  box-shadow: 0 4px 25px rgba(245, 158, 11, 0.15);
+}
+
+.hero-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+
+.hero-alert-pill {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-full);
+  background: var(--accent-red);
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.6);
+  animation: hero-alert-flash 1.6s infinite ease-in-out;
+}
+
+.acuity-hero-card.yellow-acuity .hero-alert-pill {
+  background: var(--accent-amber);
+  color: #000;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.5);
+}
+
+@keyframes hero-alert-flash {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.75; }
+}
+
+.ticket-tag {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.incident-landmark {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #ffffff;
+  margin-bottom: 0.85rem;
+  line-height: 1.3;
+}
+
+.bystander-action-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-color);
+  padding: 0.6rem 0.85rem;
+  border-radius: var(--radius-sm);
+  gap: 0.5rem;
+}
+
+.bystander-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.bystander-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+}
+
+.bystander-phone {
+  font-size: 0.9rem;
+  color: var(--accent-cyan);
+  font-weight: 700;
+}
+
+.btn-call-bystander {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #ffffff;
+  text-decoration: none;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.45rem 0.85rem;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.4);
+  transition: transform 0.15s ease;
+}
+
+.btn-call-bystander:active {
+  transform: scale(0.96);
+}
+
+/* =====================================================================
+   Giant Tactile Milestone Button
+   ===================================================================== */
+.milestone-action-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.btn-giant-milestone {
+  width: 100%;
+  min-height: 72px;
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  border: 2px solid rgba(56, 189, 248, 0.6);
+  border-radius: var(--radius-md);
+  color: #ffffff;
+  padding: 0.75rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(2, 132, 199, 0.45), 0 0 15px rgba(56, 189, 248, 0.3);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: left;
+}
+
+.btn-giant-milestone:active {
+  transform: scale(0.98);
+  box-shadow: 0 2px 10px rgba(2, 132, 199, 0.3);
+}
+
+/* Milestone Status Styling Variants */
+.btn-giant-milestone.stage-ack {
+  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+  border-color: #f87171;
+  box-shadow: 0 6px 25px rgba(239, 68, 68, 0.5);
+  animation: pulse-ack 2s infinite ease-in-out;
+}
+
+@keyframes pulse-ack {
+  0%, 100% { box-shadow: 0 6px 25px rgba(239, 68, 68, 0.5); }
+  50% { box-shadow: 0 6px 35px rgba(239, 68, 68, 0.85); }
+}
+
+.btn-giant-milestone.stage-en-route {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  border-color: #fbbf24;
+  box-shadow: 0 6px 25px rgba(245, 158, 11, 0.45);
+}
+
+.btn-giant-milestone.stage-on-scene {
+  background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+  border-color: #38bdf8;
+  box-shadow: 0 6px 25px rgba(14, 165, 233, 0.45);
+}
+
+.btn-giant-milestone.stage-loaded {
+  background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+  border-color: #a78bfa;
+  box-shadow: 0 6px 25px rgba(139, 92, 246, 0.45);
+}
+
+.btn-giant-milestone.stage-completed {
+  background: linear-gradient(135deg, #10b981 0%, #047857 100%);
+  border-color: #34d399;
+  box-shadow: 0 6px 25px rgba(16, 185, 129, 0.45);
+}
+
+.milestone-icon {
+  font-size: 2.2rem;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.5));
+}
+
+.milestone-text-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.milestone-action-label {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+
+.milestone-sub-label {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+/* 5-Step Stepper Bar */
+.stepper-dots-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius-sm);
+}
+
+.stepper-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+.stepper-step .dot-circle {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1.5px solid var(--text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  transition: all 0.25s ease;
+}
+
+.stepper-step.completed .dot-circle {
+  background: #10b981;
+  border-color: #10b981;
+  color: #fff;
+}
+
+.stepper-step.completed span {
+  color: #10b981;
+}
+
+.stepper-step.active .dot-circle {
+  background: var(--accent-cyan);
+  border-color: #fff;
+  color: #000;
+  font-weight: 800;
+  box-shadow: 0 0 10px var(--accent-cyan);
+}
+
+.stepper-step.active span {
+  color: var(--accent-cyan);
+}
+
+.stepper-line {
+  flex: 1;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 0 4px 14px;
+}
+
+/* =====================================================================
+   Mobile Tactical GPS Map
+   ===================================================================== */
+.mobile-map-section {
+  position: relative;
+  background: #090d16;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
+.map-status-pill-hud {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  z-index: 500;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.hud-item {
+  background: rgba(10, 14, 24, 0.88);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border-glow);
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
+}
+
+.driver-leaflet-map {
+  width: 100%;
+  height: 260px;
+  background: #090d16;
+}
+
+/* High-contrast tactical styling for mobile OpenStreetMap tiles */
+.driver-leaflet-map .leaflet-tile-pane {
+  filter: brightness(0.58) invert(1) contrast(3) hue-rotate(200deg) saturate(0.25) brightness(0.85);
+}
+
+/* =====================================================================
+   Standard Driver Cards
+   ===================================================================== */
+.driver-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 0.5rem;
+}
+
+.card-title-row h3 {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #ffffff;
+  flex: 1;
+}
+
+.badge-trauma {
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--accent-red);
+  color: #fff;
+}
+
+/* Turn-by-Turn Route Instructions */
+.route-instructions-list {
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.route-instructions-list li {
+  line-height: 1.4;
+}
+
+.route-instructions-list li:first-child {
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+/* Paramedic Briefing */
+.paramedic-notes-quote {
+  background: rgba(0, 240, 255, 0.04);
+  border-left: 3px solid var(--accent-cyan);
+  padding: 0.65rem 0.85rem;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: #e2e8f0;
+  line-height: 1.45;
+}
+
+.victim-narrative-box {
+  background: rgba(0, 0, 0, 0.25);
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.sub-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+}
+
+.victim-narrative-box p {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.equip-manifest-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.equip-chips-wrapper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.equip-chips-wrapper .chip {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 4px;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  color: #7dd3fc;
+}
+
+/* Receiving Hospital */
+.hosp-name-row strong {
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.hosp-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.6rem;
+  border-radius: var(--radius-sm);
+}
+
+.stat-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat-lbl {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+}
+
+.stat-val {
+  font-size: 0.82rem;
+}
+
+.hosp-contact-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8rem;
+}
+
+.btn-call-hospital {
+  color: var(--accent-cyan);
+  text-decoration: none;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+/* Crew & Footer */
+.crew-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.crew-role-label {
+  display: block;
+  font-size: 0.65rem;
+  color: var(--text-dim);
+}
+
+.crew-val {
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.footer-links-row {
+  border-top: 1px solid var(--border-color);
+  padding-top: 0.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.72rem;
+}
+
+.cad-sync-text {
+  color: var(--accent-green);
+}
+
+.link-cad-console {
+  color: var(--accent-blue);
+  text-decoration: none;
+}
+
+/* Helpers */
+.text-cyan { color: var(--accent-cyan) !important; }
+.text-green { color: var(--accent-green) !important; }
+.font-mono { font-family: var(--font-mono); }
+.font-bold { font-weight: 700; }

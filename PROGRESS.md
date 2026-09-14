@@ -286,12 +286,35 @@ In dense urban corridors (such as Chennai's GST Road, OMR expressway, and Chrome
   - Real-time display in Candidate Table: `🚗 14.5m ETA (8.4km OSRM)`.
   - Live Hospital Card display: `🚗 10m ETA (9.0 km via OSRM | 8.0 km straight-line)`.
   - Handover Slip and Audit Export include OSRM metrics for ED trauma reception.
-- **Verification**: `tests/test_osrm_routing.py` passed (6/6 tests). Full regression suite (29 tests) passed cleanly.
+---
+
+## 🗺️ Live Tactical Corridor Map (Leaflet.js + OSRM Polyline Route) (Completed)
+
+### 1. Objective
+Equip emergency dispatchers with real-time geospatial tactical situational awareness by embedding a full-featured, dark-mode Leaflet.js map with live accident beacons, trauma hospital pins, and highway road-network routing polylines.
+
+### 2. Implemented Capabilities
+- **Leaflet.js CartoDB Dark Matter Integration**: High-contrast, dark-theme geospatial map centered on the Chennai South highway corridor.
+- **Pulsing Emergency Scene Beacon**: Real-time animated CSS ripple marker (`incident-pulse-marker`) located at the accident coordinates.
+- **Trauma Facility Badging**: Pins for all candidate hospitals with visual trauma levels (`L1` vs `L2`), bed counters, and destination target highlighting (`🎯`).
+- **OSRM Highway Route Polyline**:
+  - Full GeoJSON polyline extracted from OSRM (`overview=full&geometries=geojson`).
+  - Rendered as a glowing neon cyan dashed path (`#00f0ff`) tracing the exact highway route from incident to the receiving emergency department.
+- **Corner Tactical HUD**: Displays Target Facility, Dynamic Transit ETA (`🚗 32.5 mins`), and Road Distance (`27.65 km (OSRM)`).
+- **Verification**: Browser subagent verified on live simulated incidents. All 13 dashboard and OSRM tests passing (100%).
 
 ---
 
 ## 📝 Change & Update Log
 
+- **2026-09-14 (Option 2: Ambulance Fleet CAD Dispatch — ALS vs. BLS Allocation Completed)**:
+  - Implemented `AmbulanceFleetRegistry` with 5 seeded Chennai South corridor emergency hubs (`AMB-108-01` to `AMB-108-05`) detailing vehicles, pilots, contact numbers, and equipment manifests.
+  - Implemented `AmbulanceAllocator`: Acuity-tiered physical matching (**RED** $\rightarrow$ **ALS** with ventilator, defibrillator, critical care paramedic; **YELLOW/GREEN** $\rightarrow$ **BLS** with AED, O2, splints to preserve ALS for life threats).
+  - Calculated real OSRM road-network driving distance and transit ETA from base hub to accident scene coordinates.
+  - Integrated `ambulance_allocation_node` in LangGraph state machine between `hospital_matching` and `fhir_service`.
+  - Added full executive **Card 5 (Ambulance Fleet Allocation)** to dashboard console and Leaflet tactical map pin (`🚑 AMB-108-01 (ALS)`).
+  - Built official **108 CAD Ambulance Callout Ticket Modal** (`CALLOUT-108-...`) with crew manifest, OSRM turn-by-turn route, and clinical handover briefing.
+  - Added comprehensive automated test suite `tests/test_ambulance_dispatch.py` (5 tests); full regression suite passed (**23 / 23 tests passing**).
 - **2026-09-13 (Phase 3 Benchmark Suite & Empirical Evaluation Completed)**:
   - Built automated evaluation harness `scripts/run_benchmarks.py` testing 50 clinically annotated Indian emergency scenarios.
   - Formatted publication-ready Markdown and LaTeX comparison tables and Cribari confusion matrices in `BENCHMARK_REPORT.md` and `data/benchmark_results.json`.
