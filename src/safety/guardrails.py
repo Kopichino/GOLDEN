@@ -48,6 +48,16 @@ class PIISanitizer:
         return sanitized
 
     @classmethod
+    def mask_phone(cls, phone: str) -> str:
+        """Mask middle digits of a phone number e.g. +91 98****3210."""
+        if not phone:
+            return "N/A"
+        clean = re.sub(r"[^\d+]", "", phone)
+        if len(clean) >= 10:
+            return clean[:4] + "******" + clean[-2:]
+        return "[MASKED-PHONE]"
+
+    @classmethod
     def contains_pii(cls, text: str) -> bool:
         """Check if raw text contains any unredacted PII patterns."""
         if not text:

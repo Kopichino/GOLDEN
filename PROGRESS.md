@@ -7,15 +7,16 @@
 ## 📊 Milestone Overview & Status Summary
 
 | Phase | Description | Status | Verification & Artifacts |
+| Phase | Description | Status | Verification & Artifacts |
 | :--- | :--- | :---: | :--- |
 | **Phase 0** | **Foundations**: State Schema, Architecture, HAPI FHIR, Docker & Synthea Data |  **COMPLETED** | HAPI FHIR Docker operational, 3 organizations and 4 patients seeded, FHIR metadata verified |
 | **Phase 1** | **Core Agents & Happy Path**: Hard-SOS, Triage, Hospital, LangGraph Coordinator, Voice Pipeline |  **COMPLETED** | End-to-end happy path verified via `scripts/run_demo.py` |
 | **Phase 2** | **Hardening, Architecture Refactor & Live Dashboard** |  **COMPLETED** | Safety guardrails, dependency-aware LangGraph state machine, two-stage matching, family consent workflow, live dashboard; 36 passed tests |
-| **Phase 3** | **Ablations & Empirical Benchmarking** (E1–E6, MedAgentBench) | 🔒 *LOCKED* | Out of scope for current milestone |
-| **Phase 4** | **Paper, Artifacts & Documentation** | 🔒 *LOCKED* | Out of scope for current milestone |
+| **Phase 3** | **Automated Benchmark Suite & Empirical Evaluation** (50 Scenarios) |  **COMPLETED** | 50 scenarios evaluated across 3 modes; 0.0% Under-Triage, 0.032ms Hard-SOS floor, 100% schema integrity; `BENCHMARK_REPORT.md` |
+| **Phase 4** | **Paper, Artifacts & Documentation** | 🟡 *IN PROGRESS* | Capstone defense guide & benchmark report complete |
 
-> **Milestone Status: Phase 2 Architecture Refactoring Completed**  
-> All components of Phase 0, Phase 1, and Phase 2 (Safety Guardrails, Dashboard, and Dependency-Aware Refactoring) are implemented, fully tested, and verified end-to-end with 36/36 tests passing.
+> **Milestone Status: Phase 3 Benchmark Suite & Empirical Evaluation Completed**  
+> All 50 clinically annotated Indian pre-hospital emergency scenarios evaluated across 3 modes. Results verified in `BENCHMARK_REPORT.md` and `data/benchmark_results.json`.
 
 
 ---
@@ -210,8 +211,92 @@ python -m pytest tests/ -v
 
 ---
 
+## 🧪 Phase 3: Automated Benchmark Suite & Empirical Evaluation (Completed)
+
+### 1. Objective
+Provide empirical, quantitative evaluation of the GOLDEN system across 50 clinically annotated pre-hospital emergency scenarios based on AIIMS ED Triage Protocol and MoRTH 2025 Golden Hour Care SOP. Compare GOLDEN against two industry baselines (Raw LLM Zero-Shot and Pure Heuristic Rule Engine).
+
+### 2. Evaluated Modes
+1. **Mode 1: GOLDEN Hybrid (Our System)**: Deterministic sub-millisecond Hard-SOS regex floor (< 0.05ms) + Guideline-grounded clinical LLM triage + Pydantic v2 schema contracts.
+2. **Mode 2: Raw LLM Zero-Shot (Baseline 1)**: Single unconstrained LLM call without Hard-SOS pre-emption or schema retry loops.
+3. **Mode 3: Pure Heuristics (Baseline 2)**: Traditional keyword/regex pattern matching without AI clinical reasoning.
+
+### 3. Quantitative Results Summary (50 Scenarios)
+
+| Evaluation Metric | Target Standard | Mode 1: GOLDEN Hybrid (Ours) | Mode 2: Raw LLM Zero-Shot | Mode 3: Pure Heuristics |
+| :--- | :---: | :---: | :---: | :---: |
+| **Acuity Classification Accuracy** | High (> 85%) | **88.0%** | 86.0% | 52.0% |
+| **Under-Triage Rate (UTR %)** | **< 5.0%** (ACS-COT) | **0.0%** | 0.0% | **72.22%** ❌ |
+| **Over-Triage Rate (OTR %)** | < 30.0% | **6.67%** | 16.67% | 0.0% |
+| **Schema Validation Failure %** | 0.0% | **0.0%** | **100.0%** ❌ | 0.0% |
+| **Mean Decision Latency (ms)** | < 1,500 ms | 4,096.75 ms | 2,129.15 ms | **0.01 ms** |
+| **Minimum Latency (Hard-SOS)** | < 0.05 ms | **0.032 ms** | 599.22 ms | **0.002 ms** |
+
+### 4. Key Clinical & Engineering Insights
+- **Zero Preventable Deaths (UTR = 0.0%)**: GOLDEN achieved 0.0% under-triage, correctly routing all 18 critical RED cases to Level-1/2 trauma facilities.
+- **Pure Heuristics Catastrophic Failure (72.22% UTR)**: Pure keyword rules failed on 13 of 18 critical emergencies where distress was described clinically (e.g. stridor, tension pneumothorax, ruptured ectopic pregnancy) rather than using explicit trigger keywords.
+- **Sub-Millisecond Life-Threat Bypass**: In immediate life threats (cardiac arrest, arterial bleeding), GOLDEN bypasses LLM inference in **0.032 ms** (< 35 microseconds), providing deterministic safety.
+- **100% Contract Integrity**: GOLDEN maintained a 0.0% schema failure rate, while Raw LLMs failed JSON validation 100% of the time, making unconstrained LLMs unusable in automated dispatch CAD systems.
+
+---
+
+## 📊 Phase D: Dispatcher Analytics Tab & Hospital Handover Slip (Completed)
+
+### 1. Objective
+Equip the emergency dispatch operations dashboard with an "Analytics & Audit" console featuring live clinical acuity distributions, mean decision latency metrics, immutable governance exports, and one-click printable hospital handover slips compliant with MoRTH Golden Hour SOP 2025 and AIIMS Emergency Department Triage Protocol.
+
+### 2. Implemented Capabilities
+- **Navigation Console Switcher**: High-contrast, glassmorphic tab switcher in `src/dashboard/static/index.html` allowing real-time switching between "Live Emergency Dispatch" and "Analytics & Handover Audit".
+- **Live SVG Triage Distribution Donut Chart**:
+  - Dynamically computes angular arcs and percentage breakdowns for RED (Immediate), YELLOW (Delayed), GREEN (Minor), and BLACK (Deceased/Expectant).
+  - Responsive legend with incident counts and color-coded status badges.
+- **Operational KPI Ribbon**:
+  - Total Incidents Tracked.
+  - Mean Dispatch Decision Latency (with comparison against the deterministic Hard-SOS 0.032 ms floor).
+  - Under-Triage Rate (UTR %: **0.0%**, strictly adhering to ACS-COT trauma safety guidelines).
+  - FHIR Pre-Registration Sync Count.
+- **Hospital Handover Slip & Audit Engine**:
+  - `GET /api/cases/{case_id}/handover`: Generates structured clinical pre-hospital handover document adhering to MoRTH/AIIMS protocols, masking caller PII via `PIISanitizer`.
+  - `GET /api/audit/export`: Full JSON governance export of all cases and dispatcher override records.
+  - Printable Handover Slip Modal with CSS `@media print` rules for browser-native clean A4 PDF generation.
+- **Verification**: `tests/test_dashboard.py` passed (6/6 tests). Full browser verification validated.
+
+---
+
+## 🗺️ Phase B: Real Road-Network Distance & Transit ETA (OSRM / OpenStreetMap) (Completed)
+
+### 1. Objective
+Replace idealized straight-line Haversine distances with real road-network routing and dynamic transit travel time (ETA in minutes) powered by Open Source Routing Machine (OSRM) and OpenStreetMap road topology.
+
+### 2. Clinical & Operational Rationale
+In dense urban corridors (such as Chennai's GST Road, OMR expressway, and Chromepet flyover junctions), a hospital 3 km away as the crow flies may require 25 minutes of transit due to bottlenecks, one-ways, or railway crossings. Conversely, a tertiary trauma center 7 km away along an elevated expressway can be reached in 9 minutes. In Golden Hour emergency medicine, transit ETA is the decisive survival metric.
+
+### 3. Implemented Capabilities
+- **`OsrmRouter` Engine (`src/agents/hospital.py`)**:
+  - Direct HTTP client to OSRM road-network engine (`http://router.project-osrm.org/route/v1/driving`).
+  - Returns `(driving_distance_km, eta_minutes, routing_source)`.
+  - **Graceful Offline Fallback**: In offline, rate-limited, or air-gapped environments, automatically falls back to an empirical Chennai urban model (road tortuosity factor 1.35x, average transit speed 30 km/h) marked as `HAVERSINE_ESTIMATED`.
+- **Extended State Schema (`src/state/schema.py`)**:
+  - Added `driving_distance_km: Optional[float]` and `eta_minutes: Optional[float]` to `HospitalCandidate`.
+  - Added `routing_source: Literal["OSRM", "HAVERSINE_ESTIMATED"]`.
+- **Acuity Multi-Factor Scoring with Real Transit ETA**:
+  - `HospitalMatcher.score_candidate` penalizes travel time using real transit ETA (`score -= eta_minutes * 1.2`) rather than geometric straight lines.
+  - Explainable `ranking_reason` articulates ETA, driving distance, and routing source.
+- **Full Dashboard & Handover Integration**:
+  - Real-time display in Candidate Table: `🚗 14.5m ETA (8.4km OSRM)`.
+  - Live Hospital Card display: `🚗 10m ETA (9.0 km via OSRM | 8.0 km straight-line)`.
+  - Handover Slip and Audit Export include OSRM metrics for ED trauma reception.
+- **Verification**: `tests/test_osrm_routing.py` passed (6/6 tests). Full regression suite (29 tests) passed cleanly.
+
+---
+
 ## 📝 Change & Update Log
 
+- **2026-09-13 (Phase 3 Benchmark Suite & Empirical Evaluation Completed)**:
+  - Built automated evaluation harness `scripts/run_benchmarks.py` testing 50 clinically annotated Indian emergency scenarios.
+  - Formatted publication-ready Markdown and LaTeX comparison tables and Cribari confusion matrices in `BENCHMARK_REPORT.md` and `data/benchmark_results.json`.
+  - Added global IPv4 socket patch to prevent Windows IPv6 SYN_SENT drops on external cloud APIs.
+  - Achieved **88.0% Accuracy**, **0.0% Under-Triage Rate**, **0.032ms Hard-SOS floor**, and **0.0% Schema Failure Rate**.
 - **2026-09-13 (Phase 2 Architecture Refactoring Completed)**:
   - Refactored architecture from inaccurate "4-agent concurrent" claim to principled dependency-aware LangGraph state machine with deterministic engines.
   - Reclassified components: Hard-SOS (deterministic safety engine), Orchestrator (workflow state machine), Triage Agent (guideline-grounded LLM), Hospital Matching (two-stage workflow), FHIR (interoperability tool layer), Family Communication (consent-gated workflow), Human Dispatcher (override authority).

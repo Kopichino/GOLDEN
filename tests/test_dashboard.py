@@ -72,3 +72,56 @@ def test_dashboard_case_lifecycle_and_override():
     # Verify audit log entry was added
     assert len(updated_state.control_audit.audit_trail) >= 1
     assert updated_state.control_audit.audit_trail[-1].agent_name == "human_dispatcher"
+
+def test_dashboard_analytics_endpoint():
+    res = client.get("/api/analytics")
+    assert res.status_code == 200
+    data = res.json()
+    assert "total_cases" in data
+    assert "acuity_distribution" in data
+    assert "RED" in data["acuity_distribution"]
+    assert "YELLOW" in data["acuity_distribution"]
+    assert "GREEN" in data["acuity_distribution"]
+    assert "metrics" in data
+    assert "avg_latency_ms" in data["metrics"]
+    assert "under_triage_rate_pct" in data["metrics"]
+
+def test_dashboard_case_handover_slip_and_export():
+    case_id = "GOLDEN-TEST-HANDOVER-01"
+    state = GoldenCaseState(
+        input_data=CaseIdentityInput(
+            case_id=case_id,
+            raw_input="Motorcycle crash on GST road with right thigh arterial bleed.",
+            caller_phone="+919840112233",
+            location=IncidentLocation(
+                latitude=12.9516,
+                longitude=80.1410,
+                address_or_landmark="Chromepet GST Road"
+            )
+        ),
+        control_audit=ControlAudit(
+            thread_id=f"thread-{case_id}"
+        )
+    )
+    state.triage.acuity_level = "RED"
+    state.triage.rationale = "Arterial hemorrhage requires immediate Level-1 trauma care."
+    state.hospital_fhir.selected_hospital_name = "Government Hospital Chromepet"
+    state.hospital_fhir.bed_status = "CONFIRMED"
+    active_cases[case_id] = state
+
+    # Test Handover slip
+    res_slip = client.get(f"/api/cases/{case_id}/handover")
+    assert res_slip.status_code == 200
+    slip = res_slip.json()
+    assert slip["case_id"] == case_id
+    assert slip["document_type"] == "MoRTH_AIIMS_PREHOSPITAL_HANDOVER_SLIP"
+    assert slip["clinical_triage"]["acuity_level"] == "RED"
+    assert slip["receiving_facility"]["hospital_name"] == "Government Hospital Chromepet"
+
+    # Test Full Audit Export
+    res_export = client.get("/api/audit/export")
+    assert res_export.status_code == 200
+    export_data = res_export.json()
+    assert "cases" in export_data
+    assert any(c["input_data"]["case_id"] == case_id for c in export_data["cases"])
+
