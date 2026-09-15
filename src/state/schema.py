@@ -110,6 +110,7 @@ class VoiceFamilyOutput(BaseModel):
     ] = Field(default="IDLE")
     call_id: Optional[str] = Field(default=None, description="Exotel call SID")
     recipient_phone: Optional[str] = Field(default=None, description="Consenting team test number")
+    next_of_kin_phone: Optional[str] = Field(default=None, description="Discovered next-of-kin contact phone")
     recipient_relationship: Optional[str] = Field(default=None, description="e.g. spouse, parent")
     consent_granted: Optional[bool] = Field(default=None, description="TRAI TCCCPR 2018 consent confirmation")
     allergies: List[str] = Field(default_factory=list, description="Reported patient drug/food allergies")

@@ -312,8 +312,18 @@ function handleLiveEvent(event) {
   fetchCases(false);
 
   // If the event corresponds to currently inspected case, reload details
-  if (selectedCaseId && event.case_id === selectedCaseId) {
+  if (selectedCaseId && (event.case_id === selectedCaseId || event.ticket_id)) {
     fetchCaseDetails(selectedCaseId, false);
+  }
+
+  // Handle specific Ambulance status update from field driver
+  if (event.event_type === "AMBULANCE_STATUS_UPDATE") {
+    handleAmbulanceMilestoneSync(event);
+  }
+
+  // Handle on-scene victim & family contact discovery
+  if (event.event_type === "FAMILY_CONTACT_DISCOVERED") {
+    handleFamilyContactDiscovered(event);
   }
 }
 
@@ -534,9 +544,51 @@ function renderCaseDetails(state) {
     btnInspectCondition.textContent = "None";
   }
 
-  // Voice Sub-card
-  voiceCallStatus.textContent = voice.call_status;
-  voiceCallStatus.className = `badge ${voice.call_status === 'COMPLETED' ? 'badge-acuity-GREEN' : 'badge-case'}`;
+  // Voice Sub-card: On-Scene ID & Next-of-Kin Telephony
+  const patientNameEl = document.getElementById("voice-patient-name");
+  const idSourceEl = document.getElementById("voice-id-source");
+  const familyPhoneEl = document.getElementById("voice-family-phone");
+
+  const nokPhone = voice.next_of_kin_phone || voice.recipient_phone;
+
+  // Search mission events for on-scene discovery details
+  let discoveredId = null;
+  if (state.ambulance_dispatch && state.ambulance_dispatch.mission_events) {
+    discoveredId = state.ambulance_dispatch.mission_events.find(
+      (e) => e.status === "ON_SCENE_ID_DISCOVERED"
+    );
+  }
+
+  if (nokPhone || discoveredId) {
+    if (familyPhoneEl) familyPhoneEl.textContent = nokPhone || "Registered on Scene";
+    if (patientNameEl) {
+      patientNameEl.textContent = discoveredId?.patient_name || "Identified Victim";
+    }
+    if (idSourceEl) {
+      idSourceEl.textContent = discoveredId?.id_source || "ON-SCENE ID";
+      idSourceEl.className = "badge badge-source";
+    }
+  } else {
+    if (familyPhoneEl) familyPhoneEl.textContent = "--";
+    if (patientNameEl) patientNameEl.textContent = "Awaiting paramedic on-scene search";
+    if (idSourceEl) {
+      idSourceEl.textContent = "PENDING";
+      idSourceEl.className = "badge";
+    }
+  }
+
+  let callStatusText = voice.call_status || "AWAITING ON-SCENE ID";
+  if (callStatusText === "IDLE" && !nokPhone) {
+    callStatusText = "AWAITING ON-SCENE ID";
+  } else if (callStatusText === "TRIGGERED") {
+    callStatusText = "CALLING FAMILY (AI VOICE)";
+  }
+
+  voiceCallStatus.textContent = callStatusText;
+  voiceCallStatus.className = `badge ${
+    voice.call_status === 'COMPLETED' ? 'badge-acuity-GREEN' : 
+    voice.call_status === 'TRIGGERED' ? 'badge-acuity-YELLOW' : 'badge-case'
+  }`;
 
   // Medical Tags
   medicalTagsContainer.innerHTML = "";
@@ -566,7 +618,7 @@ function renderCaseDetails(state) {
   }
 
   // Enable simulate webhook button if call triggered or awaiting webhook
-  btnSimulateWebhook.disabled = !(voice.call_status === "TRIGGERED" || audit.execution_stage === "AWAITING_WEBHOOK");
+  btnSimulateWebhook.disabled = !(voice.call_status === "TRIGGERED" || audit.execution_stage === "AWAITING_WEBHOOK" || Boolean(nokPhone));
 
   // Card 5: Ambulance Fleet Dispatch (108 CAD)
   const amb = state.ambulance_dispatch || {};
@@ -619,6 +671,25 @@ function renderCaseDetails(state) {
       btnOpenDriver.href = `/driver/${encodeURIComponent(amb.callout_ticket_id)}`;
       btnOpenDriver.style.display = "inline-flex";
     }
+
+    // Card 5 Live Scannable Driver Companion QR Code Panel
+    const cardQrPanel = document.getElementById("card-ambulance-qr-panel");
+    const cardQrImg = document.getElementById("card-ambulance-qr-img");
+    const cardQrLink = document.getElementById("card-ambulance-qr-link");
+    const targetTicket = amb.callout_ticket_id || `CALLOUT-108-${input.case_id}`;
+
+    if (cardQrPanel) cardQrPanel.style.display = "flex";
+    if (cardQrImg) {
+      cardQrImg.src = `/api/driver/${encodeURIComponent(targetTicket)}/qr?t=${Date.now()}`;
+    }
+    if (cardQrLink) {
+      cardQrLink.href = `/driver/${encodeURIComponent(targetTicket)}`;
+      cardQrLink.textContent = `/driver/${targetTicket} ↗`;
+    }
+
+    // Update 6-step CAD Mission Stepper
+    updateCadMissionStepper(amb.mission_status || "DISPATCHED");
+
   } else if (ambulanceTierBadge) {
     ambulanceTierBadge.textContent = "AWAITING ALLOCATION";
     ambulanceTierBadge.className = "ambulance-tier-badge";
@@ -639,6 +710,10 @@ function renderCaseDetails(state) {
 
     const btnOpenDriver = document.getElementById("btn-open-driver-companion");
     if (btnOpenDriver) btnOpenDriver.style.display = "none";
+
+    const cardQrPanel = document.getElementById("card-ambulance-qr-panel");
+    if (cardQrPanel) cardQrPanel.style.display = "none";
+    updateCadMissionStepper("AWAITING");
   }
 
   // Update Pipeline Tracker
@@ -1980,5 +2055,234 @@ async function openCalloutTicketModal(caseId) {
     alert("Error loading callout ticket: " + err.message);
   }
 }
+
+// =====================================================================
+// Real-Time 108 CAD Field Ambulance Sync Handlers
+// =====================================================================
+function updateCadMissionStepper(currentStatus) {
+  const statusNorm = (currentStatus || "DISPATCHED").toUpperCase();
+  const labelEl = document.getElementById("cad-mission-status-label");
+
+  const statusIndexMap = {
+    "AWAITING": -1,
+    "DISPATCHED": 0,
+    "ACKNOWLEDGED": 1,
+    "EN_ROUTE_SCENE": 2,
+    "ON_SCENE": 3,
+    "PATIENT_LOADED": 4,
+    "ARRIVED_ED": 5,
+    "HANDOVER_COMPLETE": 5
+  };
+
+  const currentIndex = statusIndexMap[statusNorm] !== undefined ? statusIndexMap[statusNorm] : 0;
+
+  if (labelEl) {
+    const humanLabels = {
+      "DISPATCHED": "1. DISPATCHED (DEPOT ROLL-OUT)",
+      "ACKNOWLEDGED": "2. ACKNOWLEDGED BY CREW",
+      "EN_ROUTE_SCENE": "3. EN ROUTE TO SCENE (SIREN ACTIVE)",
+      "ON_SCENE": "4. ON SCENE (10-23) • TRIAGE & STABILIZING",
+      "PATIENT_LOADED": "5. PATIENT LOADED • IN TRANSIT TO ED",
+      "ARRIVED_ED": "6. ARRIVED AT ED TRAUMA BAY",
+      "HANDOVER_COMPLETE": "6. HANDOVER COMPLETE • BED SECURED",
+      "AWAITING": "AWAITING ALLOCATION"
+    };
+    labelEl.textContent = humanLabels[statusNorm] || statusNorm;
+  }
+
+  for (let i = 0; i < 6; i++) {
+    const stepEl = document.getElementById(`cad-step-${i + 1}`);
+    const lineEl = document.getElementById(`cad-line-${i + 1}`);
+    const iconEl = stepEl ? stepEl.querySelector(".cad-step-icon") : null;
+
+    if (!stepEl) continue;
+
+    stepEl.classList.remove("active", "completed");
+    if (lineEl) lineEl.classList.remove("completed");
+
+    if (i < currentIndex) {
+      stepEl.classList.add("completed");
+      if (iconEl) iconEl.textContent = "✓";
+      if (lineEl) lineEl.classList.add("completed");
+    } else if (i === currentIndex) {
+      stepEl.classList.add("active");
+      if (iconEl) iconEl.textContent = `${i + 1}`;
+    } else {
+      if (iconEl) iconEl.textContent = `${i + 1}`;
+    }
+  }
+}
+
+function handleAmbulanceMilestoneSync(event) {
+  const status = (event.mission_status || "DISPATCHED").toUpperCase();
+  const unitId = event.unit_id || "AMB-108-01";
+  const hospName = event.hospital_name || "Emergency Department";
+
+  // Play subtle authentic dispatch radio chime
+  playCadChime();
+
+  // Show floating CAD radio notification toast
+  const isComplete = status === "HANDOVER_COMPLETE" || status === "ARRIVED_ED";
+  const isLoaded = status === "PATIENT_LOADED";
+  const toastType = isComplete ? "toast-success" : (isLoaded ? "toast-urgent" : "");
+
+  const milestoneNames = {
+    "ACKNOWLEDGED": "Crew Acknowledged Dispatch",
+    "EN_ROUTE_SCENE": "Ambulance En Route to Accident Scene",
+    "ON_SCENE": "Ambulance Arrived On Scene (10-23)",
+    "PATIENT_LOADED": `Patient Loaded — En Route to ${hospName}`,
+    "ARRIVED_ED": "Arrived at ED Trauma Resuscitation Bay",
+    "HANDOVER_COMPLETE": "Clinical Handover Complete — Bed Confirmed"
+  };
+
+  showCadNotificationToast({
+    type: toastType,
+    title: `📡 108 CAD Radio Sync • ${unitId}`,
+    message: milestoneNames[status] || `Status: ${status.replace(/_/g, ' ')}`,
+    sub: event.notes || "Field pilot milestone synced with central command."
+  });
+
+  // Update Stepper Bar
+  updateCadMissionStepper(status);
+
+  // Update Ambulance Card Badge
+  if (ambulanceTierBadge) {
+    const isAls = unitId.includes("ALS") || ambulanceAcuityTag?.textContent === "ALS";
+    const statusLabels = {
+      "DISPATCHED": "ALS ALLOCATED",
+      "ACKNOWLEDGED": "🚨 ACKNOWLEDGED BY CREW",
+      "EN_ROUTE_SCENE": "🚑 EN ROUTE TO SCENE",
+      "ON_SCENE": "📍 ON SCENE (10-23)",
+      "PATIENT_LOADED": "🩺 PATIENT LOADED / EN ROUTE ED",
+      "ARRIVED_ED": "🏥 ARRIVED AT ED TRAUMA BAY",
+      "HANDOVER_COMPLETE": "✅ HANDOVER COMPLETE / READY"
+    };
+    ambulanceTierBadge.textContent = statusLabels[status] || status;
+    ambulanceTierBadge.className = `ambulance-tier-badge ${isAls ? "tier-als" : "tier-bls"} status-${status.toLowerCase().replace(/_/g, '-')}`;
+  }
+
+  // Update Paramedic Briefing Text in Card 5
+  if (ambulanceParamedicNotes && event.notes) {
+    ambulanceParamedicNotes.textContent = event.notes;
+  }
+
+  // Update Map Overlay HUD dynamically
+  const hudEta = document.getElementById("hud-transit-eta");
+  if (hudEta) {
+    if (isLoaded) {
+      hudEta.textContent = "In Highway Transit (Telemetry Active)";
+      hudEta.style.color = "#ff3b30";
+    } else if (isComplete) {
+      hudEta.textContent = "Patient Admitted (0m)";
+      hudEta.style.color = "#10b981";
+    } else if (status === "ON_SCENE") {
+      hudEta.textContent = "On Scene (Stabilization)";
+      hudEta.style.color = "#f59e0b";
+    }
+  }
+
+  // Update Hospital Card Bed Status
+  if (fhirBedStatusTag) {
+    if (isComplete) {
+      fhirBedStatusTag.textContent = "CONFIRMED / ADMITTED";
+      fhirBedStatusTag.className = "badge badge-acuity-GREEN";
+    } else if (isLoaded) {
+      fhirBedStatusTag.textContent = "RESERVED (INBOUND TRANSIT)";
+      fhirBedStatusTag.className = "badge badge-acuity-YELLOW";
+    }
+  }
+
+  // Fetch updated case details in background to ensure full state sync
+  if (selectedCaseId) {
+    fetchCaseDetails(selectedCaseId, false);
+  }
+}
+
+function showCadNotificationToast({ type = "", title, message, sub }) {
+  let container = document.getElementById("cad-toast-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "cad-toast-container";
+    container.className = "cad-toast-container";
+    document.body.appendChild(container);
+  }
+
+  const toast = document.createElement("div");
+  toast.className = `cad-toast ${type}`;
+  toast.innerHTML = `
+    <div class="cad-toast-title">
+      <span>${escapeHtml(title)}</span>
+      <span style="font-size:0.65rem; color:#38bdf8; font-family:monospace;">${new Date().toLocaleTimeString()}</span>
+    </div>
+    <div class="cad-toast-msg">${escapeHtml(message)}</div>
+    ${sub ? `<div class="cad-toast-sub">${escapeHtml(sub)}</div>` : ""}
+  `;
+
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.opacity = "0";
+    toast.style.transform = "translateY(-15px) scale(0.95)";
+    setTimeout(() => toast.remove(), 350);
+  }, 5500);
+}
+
+function playCadChime() {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(800, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.12);
+    gain.gain.setValueAtTime(0.12, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.22);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.22);
+  } catch (e) {
+    // AudioContext blocked before interaction
+  }
+}
+
+function handleFamilyContactDiscovered(event) {
+  playCadChime();
+
+  showCadNotificationToast({
+    type: "toast-success",
+    title: `🆔 On-Scene Victim ID Transmitted`,
+    message: `Victim: ${event.patient_name} (${event.id_source})`,
+    sub: `Family contact: ${event.next_of_kin_phone} • Auto-triggering Voice AI outreach`
+  });
+
+  const patientNameEl = document.getElementById("voice-patient-name");
+  const idSourceEl = document.getElementById("voice-id-source");
+  const familyPhoneEl = document.getElementById("voice-family-phone");
+
+  if (patientNameEl) patientNameEl.textContent = event.patient_name;
+  if (idSourceEl) {
+    idSourceEl.textContent = event.id_source;
+    idSourceEl.className = "badge badge-source";
+  }
+  if (familyPhoneEl) familyPhoneEl.textContent = event.next_of_kin_phone;
+
+  if (voiceCallStatus) {
+    voiceCallStatus.textContent = "CALLING FAMILY (AI VOICE)";
+    voiceCallStatus.className = "badge badge-acuity-YELLOW";
+  }
+
+  if (btnSimulateWebhook) {
+    btnSimulateWebhook.disabled = false;
+  }
+
+  if (selectedCaseId) {
+    fetchCaseDetails(selectedCaseId, false);
+  }
+}
+
+
 
 

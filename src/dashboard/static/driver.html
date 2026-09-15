@@ -144,6 +144,66 @@
       </div>
     </section>
 
+    <!-- On-Scene Patient & Family Contact Discovery Card -->
+    <section class="driver-card on-scene-id-card" id="on-scene-id-section">
+      <div class="card-title-row">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00f0ff" stroke-width="2">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+          <circle cx="12" cy="7" r="4"></circle>
+        </svg>
+        <h3>On-Scene Victim & Family Contact Discovery</h3>
+        <span class="badge-stage" id="badge-id-stage">ON-SCENE CAD SYNC</span>
+      </div>
+      <p class="section-hint-text">
+        Retrieve victim identity from smartphone emergency lock-screen (ICE), wallet ID, or vehicle plate to automatically dispatch the Family Voice AI Agent.
+      </p>
+
+      <div class="driver-form-grid">
+        <div class="form-field-group">
+          <label for="driver-input-patient-name">Patient Name / Tag:</label>
+          <input type="text" id="driver-input-patient-name" placeholder="e.g. Rajesh Kumar" value="Rajesh Kumar" />
+        </div>
+
+        <div class="form-field-group">
+          <label for="driver-select-id-source">ID Source:</label>
+          <select id="driver-select-id-source">
+            <option value="Smartphone Lock-screen ICE" selected>📱 Smartphone Lock-screen ICE</option>
+            <option value="Driving License / Wallet ID">🪪 Driving License / Wallet ID</option>
+            <option value="Vehicle Number Plate (VAHAN)">🚗 Vehicle Plate (VAHAN DB)</option>
+            <option value="Bystander / Co-passenger">👥 Bystander / Co-passenger Confirmed</option>
+            <option value="Unidentified (Trauma John Doe)">❓ Unidentified (Unknown Male/Female)</option>
+          </select>
+        </div>
+
+        <div class="form-field-group">
+          <label for="driver-input-family-phone">Family / Next-of-Kin Mobile:</label>
+          <input type="tel" id="driver-input-family-phone" placeholder="e.g. +91 98400 12345" value="+91 98400 12345" />
+        </div>
+
+        <div class="form-field-group">
+          <label for="driver-select-relationship">Relationship:</label>
+          <select id="driver-select-relationship">
+            <option value="Parent (Father/Mother)" selected>Parent (Father/Mother)</option>
+            <option value="Spouse (Wife/Husband)">Spouse (Wife/Husband)</option>
+            <option value="Sibling (Brother/Sister)">Sibling (Brother/Sister)</option>
+            <option value="Emergency Contact (ICE)">Emergency Contact (ICE)</option>
+            <option value="Colleague / Friend">Colleague / Friend</option>
+          </select>
+        </div>
+      </div>
+
+      <button class="btn-dispatch-family-ai" id="btn-submit-family-id">
+        <span class="btn-icon">📞</span>
+        <div class="btn-text-wrap">
+          <span class="btn-main-label">Transmit to CAD & Trigger Family Voice AI</span>
+          <span class="btn-sub-label">Transmits contact to control room & triggers automated family notification</span>
+        </div>
+      </button>
+      <div class="family-dispatch-status-banner hidden" id="family-dispatch-status-banner">
+        ✅ Family Voice Agent Triggered • Calling Next-of-Kin
+      </div>
+    </section>
+
     <!-- Target Receiving Hospital Card -->
     <section class="driver-card hospital-card">
       <div class="card-title-row">

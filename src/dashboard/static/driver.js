@@ -72,6 +72,7 @@ document.addEventListener("DOMContentLoaded", () => {
   resolveTicketId();
   fetchMissionData();
   setupMilestoneButton();
+  setupOnSceneIdentification();
   initDriverSSE();
 });
 
@@ -273,6 +274,60 @@ function setupMilestoneButton() {
     } finally {
       btn.disabled = false;
       btn.style.opacity = "1";
+    }
+  });
+}
+
+function setupOnSceneIdentification() {
+  const btnSubmit = document.getElementById("btn-submit-family-id");
+  if (!btnSubmit) return;
+
+  btnSubmit.addEventListener("click", async () => {
+    const patientName = document.getElementById("driver-input-patient-name")?.value.trim() || "Identified Victim";
+    const idSource = document.getElementById("driver-select-id-source")?.value || "Smartphone Lock-screen ICE";
+    const familyPhone = document.getElementById("driver-input-family-phone")?.value.trim();
+    const relationship = document.getElementById("driver-select-relationship")?.value || "Parent (Father/Mother)";
+    const statusBanner = document.getElementById("family-dispatch-status-banner");
+
+    if (!familyPhone || familyPhone.length < 8) {
+      alert("Please enter a valid Next-of-Kin phone number (at least 8 digits).");
+      return;
+    }
+
+    btnSubmit.disabled = true;
+    btnSubmit.style.opacity = "0.7";
+
+    try {
+      playTacticalBeep();
+      const res = await fetch(`/api/driver/${encodeURIComponent(currentTicketId)}/identification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patient_name: patientName,
+          id_source: idSource,
+          relationship: relationship,
+          next_of_kin_phone: familyPhone
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || "Submission failed");
+      }
+
+      const result = await res.json();
+      if (statusBanner) {
+        statusBanner.textContent = `✅ Transmitted to CAD • Family Outreach Dispatched to ${familyPhone}`;
+        statusBanner.classList.remove("hidden");
+      }
+      btnSubmit.style.background = "linear-gradient(135deg, #10b981, #059669)";
+      const mainLbl = btnSubmit.querySelector(".btn-main-label");
+      if (mainLbl) mainLbl.textContent = "Dispatched to Family & CAD ✓";
+    } catch (err) {
+      alert("Error submitting on-scene identification: " + err.message);
+    } finally {
+      btnSubmit.disabled = false;
+      btnSubmit.style.opacity = "1";
     }
   });
 }

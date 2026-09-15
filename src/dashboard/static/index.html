@@ -338,15 +338,29 @@
             <!-- Voice Next-of-Kin Sub-card -->
             <div class="voice-section">
               <div class="voice-head">
-                <span class="voice-title">Next-of-Kin Telephony Status:</span>
-                <span class="badge" id="voice-call-status">IDLE</span>
+                <span class="voice-title">Next-of-Kin Voice AI Telephony:</span>
+                <span class="badge" id="voice-call-status">AWAITING ON-SCENE ID</span>
               </div>
+
+              <!-- Discovered Patient Identity & NOK Contact Strip -->
+              <div class="on-scene-discovered-strip" id="on-scene-discovered-strip">
+                <div class="discovered-row">
+                  <span class="d-label">Patient Identity:</span>
+                  <span class="d-val font-bold text-cyan" id="voice-patient-name">Awaiting paramedic on-scene search</span>
+                  <span class="badge badge-source" id="voice-id-source">PENDING</span>
+                </div>
+                <div class="discovered-row">
+                  <span class="d-label">Family / NOK Contact:</span>
+                  <span class="d-val font-mono text-cyan" id="voice-family-phone">--</span>
+                </div>
+              </div>
+
               <div class="medical-tags" id="medical-tags-container">
                 <span class="tag-empty">Awaiting next-of-kin allergy/history check</span>
               </div>
               <button class="btn-small-action" id="btn-simulate-webhook" disabled>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-                <span>Simulate Caller Webhook Callback</span>
+                <span>Simulate Family Disclosure Webhook</span>
               </button>
             </div>
           </div>
@@ -394,6 +408,68 @@
                 <div class="crew-item">
                   <span class="crew-role">Pilot Radio / Mobile:</span>
                   <span class="crew-name font-mono text-cyan" id="ambulance-pilot-phone">-</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Live Vehicle Mission Stepper (Synchronized with Field Pilot) -->
+            <div class="cad-mission-stepper-wrap" id="cad-mission-stepper-wrap">
+              <div class="mission-stepper-header">
+                <span class="stepper-title">FIELD CAD MISSION PROGRESSION (LIVE PHONE SYNC):</span>
+                <span class="mission-live-status font-mono" id="cad-mission-status-label">1. DISPATCHED (DEPOT)</span>
+              </div>
+              <div class="cad-stepper-bar">
+                <div class="cad-step active" id="cad-step-1" data-step="DISPATCHED">
+                  <div class="cad-step-icon">1</div>
+                  <span class="cad-step-name">DISPATCHED</span>
+                </div>
+                <div class="cad-step-line" id="cad-line-1"></div>
+                <div class="cad-step" id="cad-step-2" data-step="ACKNOWLEDGED">
+                  <div class="cad-step-icon">2</div>
+                  <span class="cad-step-name">ACKNOWLEDGED</span>
+                </div>
+                <div class="cad-step-line" id="cad-line-2"></div>
+                <div class="cad-step" id="cad-step-3" data-step="EN_ROUTE_SCENE">
+                  <div class="cad-step-icon">3</div>
+                  <span class="cad-step-name">EN ROUTE</span>
+                </div>
+                <div class="cad-step-line" id="cad-line-3"></div>
+                <div class="cad-step" id="cad-step-4" data-step="ON_SCENE">
+                  <div class="cad-step-icon">4</div>
+                  <span class="cad-step-name">ON SCENE</span>
+                </div>
+                <div class="cad-step-line" id="cad-line-4"></div>
+                <div class="cad-step" id="cad-step-5" data-step="PATIENT_LOADED">
+                  <div class="cad-step-icon">5</div>
+                  <span class="cad-step-name">PATIENT LOADED</span>
+                </div>
+                <div class="cad-step-line" id="cad-line-5"></div>
+                <div class="cad-step" id="cad-step-6" data-step="HANDOVER_COMPLETE">
+                  <div class="cad-step-icon">6</div>
+                  <span class="cad-step-name">HOSPITAL HANDOVER</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Live Scannable Field Companion QR Code directly on Dashboard -->
+            <div class="card-ambulance-qr-panel" id="card-ambulance-qr-panel" style="display:none;">
+              <div class="card-qr-img-wrap">
+                <img id="card-ambulance-qr-img" class="card-qr-img" src="" alt="Driver Companion QR Code" />
+                <span class="qr-scan-badge">📲 SCAN TO LAUNCH DRIVER HUD</span>
+              </div>
+              <div class="card-qr-info">
+                <div class="card-qr-badge-row">
+                  <span class="card-qr-headline">Field Paramedic / Ambulance Pilot Mobile HUD</span>
+                  <span class="qr-live-tag">⚡ LIVE SYNC (SSE)</span>
+                </div>
+                <p class="card-qr-subtext">
+                  Scan this QR code with any smartphone camera on the local Wi-Fi. Every milestone tap on mobile (Acknowledge ➡️ En Route ➡️ Patient Loaded ➡️ Handover) advances the mission and updates this central dispatch console in real time.
+                </p>
+                <div class="card-qr-actions-row">
+                  <span class="card-qr-link-lbl">Direct Mobile Link:</span>
+                  <a id="card-ambulance-qr-link" class="card-qr-link font-mono" target="_blank" href="#">
+                    /driver/... ↗
+                  </a>
                 </div>
               </div>
             </div>
@@ -1064,6 +1140,9 @@
       </div>
     </div>
   </div>
+
+  <!-- Floating Live 108 CAD Radio Update Toast Container -->
+  <div class="cad-toast-container" id="cad-toast-container"></div>
 
   <script src="/static/app.js"></script>
 </body>

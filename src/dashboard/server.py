@@ -131,6 +131,13 @@ class DriverStatusUpdateRequest(BaseModel):
     status: str
     notes: Optional[str] = None
 
+class OnSceneIdentificationRequest(BaseModel):
+    patient_name: str = "Identified Victim"
+    id_source: str = "Smartphone Lock-screen ICE"
+    relationship: str = "Family / Next-of-Kin"
+    next_of_kin_phone: str
+    clinical_notes: Optional[str] = None
+
 @app.get("/api/events")
 async def sse_events(request: Request):
     """Server-Sent Events endpoint streaming live multi-agent updates."""
@@ -166,9 +173,48 @@ async def sse_events(request: Request):
         }
     )
 
+def seed_initial_demo_case() -> Optional[str]:
+    """Ensure at least one demonstration emergency incident is ready upon server start."""
+    if active_cases:
+        return next(iter(active_cases.keys()))
+    case_id = f"GOLDEN-{datetime.now().strftime('%Y%m%d')}-04961A"
+    preset = PRESET_SCENARIOS["tambaram_femur_crash"]
+    initial_state = GoldenCaseState(
+        input_data=CaseIdentityInput(
+            case_id=case_id,
+            caller_phone=preset["caller_phone"],
+            raw_input=preset["raw_input"],
+            language="en",
+            location=IncidentLocation(
+                latitude=preset["latitude"],
+                longitude=preset["longitude"],
+                address_or_landmark=preset["address"],
+                district="Chennai"
+            )
+        ),
+        control_audit=ControlAudit(
+            thread_id=f"thread-{case_id}",
+            active_provider="groq",
+            execution_stage="INGESTION"
+        )
+    )
+    try:
+        final_state = coordinator.dispatch_case(initial_state)
+        active_cases[case_id] = final_state
+        return case_id
+    except Exception as e:
+        print(f"Startup demo seed notice: {e}")
+        return None
+
+@app.on_event("startup")
+def on_startup():
+    seed_initial_demo_case()
+
 @app.get("/api/cases")
 def list_cases():
     """Retrieve all active cases in the system."""
+    if not active_cases:
+        seed_initial_demo_case()
     cases_summary = []
     for case_id, state in active_cases.items():
         inp = state.input_data
@@ -738,17 +784,33 @@ def update_driver_mission_status(ticket_or_case_id: str, req: DriverStatusUpdate
 
     amb.mission_status = new_status
     now_iso = datetime.now(timezone.utc).isoformat()
+    hosp_name = state.hospital_fhir.selected_hospital_name or "Receiving Trauma Center"
+
+    # Context-aware clinical briefing notes synchronized with physical milestone
+    if new_status == "ACKNOWLEDGED":
+        milestone_briefing = f"Crew acknowledged 108 CAD callout. Commencing vehicle rollout from {amb.selected_unit.base_station}."
+    elif new_status == "EN_ROUTE_SCENE":
+        milestone_briefing = f"Unit {amb.selected_unit.unit_id} en route to incident scene. Siren active, OSRM priority highway corridor engaged."
+    elif new_status == "ON_SCENE":
+        milestone_briefing = "Ambulance arrived on scene (10-23). Paramedic conducting C-ABCDE primary survey, cervical collar & stabilization applied."
+    elif new_status == "PATIENT_LOADED":
+        milestone_briefing = f"Patient loaded & secured. Immediate emergency transit underway to {hosp_name} with vitals telemetry streaming."
+        state.hospital_fhir.bed_status = "INBOUND_TRANSIT"
+    elif new_status in ["ARRIVED_ED", "HANDOVER_COMPLETE"]:
+        milestone_briefing = f"Ambulance backed into Trauma Resuscitation Bay. Paramedic transferring clinical care to ED Attending. Bed secured."
+        state.hospital_fhir.bed_status = "CONFIRMED"
+    else:
+        milestone_briefing = req.notes or f"Milestone progressed to {new_status}."
+
+    amb.paramedic_handover_notes = req.notes or milestone_briefing
+
     event_record = {
         "status": new_status,
         "previous_status": old_status,
         "timestamp": now_iso,
-        "notes": req.notes or f"Status transitioned to {new_status} via Mobile Companion"
+        "notes": amb.paramedic_handover_notes
     }
     amb.mission_events.append(event_record)
-
-    # If patient handover is complete, update bed status to ADMITTED/CONFIRMED
-    if new_status in ["ARRIVED_ED", "HANDOVER_COMPLETE"]:
-        state.hospital_fhir.bed_status = "CONFIRMED"
 
     # Broadcast event via SSE to central CAD dashboard
     broadcast_event({
@@ -759,7 +821,9 @@ def update_driver_mission_status(ticket_or_case_id: str, req: DriverStatusUpdate
         "unit_id": amb.selected_unit.unit_id,
         "mission_status": new_status,
         "previous_status": old_status,
-        "notes": req.notes
+        "notes": amb.paramedic_handover_notes,
+        "hospital_name": hosp_name,
+        "bed_status": state.hospital_fhir.bed_status
     })
 
     return {
@@ -768,6 +832,57 @@ def update_driver_mission_status(ticket_or_case_id: str, req: DriverStatusUpdate
         "ticket_id": amb.callout_ticket_id,
         "mission_status": new_status,
         "events_count": len(amb.mission_events)
+    }
+
+@app.post("/api/driver/{ticket_or_case_id}/identification")
+def submit_on_scene_identification(ticket_or_case_id: str, req: OnSceneIdentificationRequest):
+    """Receive victim identification and next-of-kin contact discovered on scene by paramedics."""
+    case_id, state = _find_case_by_ticket_or_id(ticket_or_case_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Ambulance mission not found")
+
+    clean_phone = req.next_of_kin_phone.strip()
+    if not clean_phone or len(clean_phone) < 8:
+        raise HTTPException(status_code=400, detail="Invalid next-of-kin phone number. Must be at least 8 digits.")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Bind discovered family contact and victim identity to state
+    state.voice_family.next_of_kin_phone = clean_phone
+    state.voice_family.recipient_phone = clean_phone
+    state.voice_family.recipient_relationship = req.relationship
+    state.voice_family.call_status = "TRIGGERED"
+    
+    event_desc = f"On-Scene ID: '{req.patient_name}' via {req.id_source}. Family phone: {clean_phone} ({req.relationship})."
+    if state.ambulance_dispatch:
+        state.ambulance_dispatch.mission_events.append({
+            "status": "ON_SCENE_ID_DISCOVERED",
+            "timestamp": now_iso,
+            "notes": event_desc
+        })
+
+    # Broadcast event via SSE to central CAD dashboard
+    broadcast_event({
+        "event_type": "FAMILY_CONTACT_DISCOVERED",
+        "timestamp": now_iso,
+        "case_id": case_id,
+        "ticket_id": state.ambulance_dispatch.callout_ticket_id if state.ambulance_dispatch else None,
+        "patient_name": req.patient_name,
+        "id_source": req.id_source,
+        "relationship": req.relationship,
+        "next_of_kin_phone": clean_phone,
+        "call_status": "TRIGGERED",
+        "notes": req.clinical_notes or event_desc
+    })
+
+    return {
+        "success": True,
+        "case_id": case_id,
+        "patient_name": req.patient_name,
+        "id_source": req.id_source,
+        "next_of_kin_phone": clean_phone,
+        "call_status": "TRIGGERED",
+        "message": f"Family outreach triggered to {clean_phone} for {req.patient_name}"
     }
 
 @app.get("/api/audit/export")
