@@ -122,3 +122,21 @@ def test_hospital_matcher_scores_with_eta_penalty():
     assert ranked[0].hospital_id == "HOSP-EXPRESSWAY"
     assert "ETA" in reason
     assert "OSRM" in reason
+
+
+def test_osrm_route_geometry_and_coordinates():
+    """Verify OsrmRouter returns valid Leaflet-ready [lat, lon] geometry and candidates have coordinates."""
+    discovery = HospitalDiscovery()
+    candidates = discovery.discover_candidates(incident_lat=12.9249, incident_lon=80.1000)
+
+    assert len(candidates) >= 3
+    for c in candidates:
+        assert c.latitude is not None and 12.0 <= c.latitude <= 14.0
+        assert c.longitude is not None and 79.0 <= c.longitude <= 81.0
+        assert c.route_geometry is not None
+        assert len(c.route_geometry) >= 2
+        # Check that coordinates are [lat, lon]
+        first_pt = c.route_geometry[0]
+        assert len(first_pt) == 2
+        assert 12.0 <= first_pt[0] <= 14.0  # Latitude
+        assert 79.0 <= first_pt[1] <= 81.0  # Longitude

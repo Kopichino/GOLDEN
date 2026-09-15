@@ -35,6 +35,7 @@ from src.agents.hospital import (
 )
 from src.voice.family_communication import FamilyCommunicationAgent, FamilyCommunicationWorkflow
 from src.voice.exotel_client import ExotelClient
+from src.agents.ambulance import AmbulanceAllocator
 from src.safety.guardrails import (
     PIISanitizer,
     PromptInjectionDetector,
@@ -52,6 +53,7 @@ class GoldenOrchestrator:
         hospital_discovery: Optional[HospitalDiscovery] = None,
         hospital_matcher: Optional[HospitalMatcher] = None,
         fhir_service: Optional[FhirToolService] = None,
+        ambulance_allocator: Optional[AmbulanceAllocator] = None,
         family_agent: Optional[FamilyCommunicationAgent] = None,
         exotel_client: Optional[ExotelClient] = None,
         event_callback: Optional[Callable[[Dict[str, Any]], None]] = None
@@ -61,6 +63,7 @@ class GoldenOrchestrator:
         self.hospital_discovery = hospital_discovery or getattr(self.hospital_agent, "discovery", HospitalDiscovery())
         self.hospital_matcher = hospital_matcher or getattr(self.hospital_agent, "matcher", HospitalMatcher())
         self.fhir_service = fhir_service or getattr(self.hospital_agent, "fhir_service", FhirToolService())
+        self.ambulance_allocator = ambulance_allocator or AmbulanceAllocator()
         self.exotel_client = exotel_client or ExotelClient()
         self.family_agent = family_agent or FamilyCommunicationAgent(exotel_client=self.exotel_client)
         self.event_callback = event_callback
@@ -306,6 +309,48 @@ class GoldenOrchestrator:
             return {"hospital_fhir": hosp_copy, "control_audit": control_copy}
 
         # -------------------------------------------------------------
+        # 6B. Ambulance Allocation Node (108 CAD Vehicle Dispatch)
+        # -------------------------------------------------------------
+        def ambulance_allocation_node(state: GoldenCaseState) -> Dict[str, Any]:
+            a_start = time.perf_counter()
+            control_copy = state.control_audit.model_copy()
+            control_copy.current_node = "ambulance_allocation_node"
+            control_copy.execution_stage = "AMBULANCE_ALLOCATION"
+
+            acuity = state.triage.acuity_level or ("RED" if state.triage.hard_sos else "YELLOW")
+            hosp_name = state.hospital_fhir.selected_hospital_name or "Receiving Hospital"
+            landmark = state.input_data.location.address_or_landmark
+
+            amb_output = self.ambulance_allocator.allocate_ambulance(
+                incident_lat=state.input_data.location.latitude,
+                incident_lon=state.input_data.location.longitude,
+                acuity_level=acuity,
+                case_id=state.input_data.case_id,
+                target_hospital_name=hosp_name,
+                landmark_narrative=landmark
+            )
+
+            a_elapsed = round((time.perf_counter() - a_start) * 1000.0, 2)
+            control_copy.node_timings["ambulance_allocation_node"] = NodeExecutionTiming(
+                node_name="ambulance_allocation_node",
+                started_at=datetime.now(timezone.utc),
+                ended_at=datetime.now(timezone.utc),
+                latency_ms=a_elapsed,
+                is_parallel=False
+            )
+
+            self.emit_event("AMBULANCE_ALLOCATED", state.input_data.case_id, {
+                "unit_id": amb_output.selected_unit.unit_id if amb_output.selected_unit else None,
+                "unit_type": amb_output.selected_unit.unit_type if amb_output.selected_unit else None,
+                "base_station": amb_output.selected_unit.base_station if amb_output.selected_unit else None,
+                "eta_to_scene_minutes": amb_output.selected_unit.eta_to_scene_minutes if amb_output.selected_unit else None,
+                "callout_ticket_id": amb_output.callout_ticket_id,
+                "latency_ms": a_elapsed
+            })
+
+            return {"ambulance_dispatch": amb_output, "control_audit": control_copy}
+
+        # -------------------------------------------------------------
         # 7. FHIR Service Node (Pre-Registration Tool Layer)
         # -------------------------------------------------------------
         def fhir_service_node(state: GoldenCaseState) -> Dict[str, Any]:
@@ -348,17 +393,16 @@ class GoldenOrchestrator:
                 is_parallel=False
             )
 
-            self.emit_event("FHIR_REGISTRATION_COMPLETE", state.input_data.case_id, {
+            self.emit_event("FHIR_PRE_REGISTERED", state.input_data.case_id, {
                 "bundle_id": hosp_copy.fhir_bundle_id,
-                "patient_id": hosp_copy.fhir_patient_id,
-                "encounter_id": hosp_copy.fhir_encounter_id,
-                "status": hosp_copy.fhir_submission_status
+                "status": hosp_copy.fhir_submission_status,
+                "latency_ms": f_elapsed
             })
 
             return {"hospital_fhir": hosp_copy, "control_audit": control_copy}
 
         # -------------------------------------------------------------
-        # 8. Family Communication Specialist Node
+        # 8. Family Communication Node (Consent-Gated Outreach)
         # -------------------------------------------------------------
         def family_communication_node(state: GoldenCaseState) -> Dict[str, Any]:
             v_start = time.perf_counter()
@@ -367,16 +411,25 @@ class GoldenOrchestrator:
             control_copy.execution_stage = "VOICE_DISPATCH"
 
             phone_to_call = state.voice_family.recipient_phone or state.input_data.caller_phone
-            outreach = self.family_agent.execute_outreach(
-                case_id=state.input_data.case_id,
-                recipient_phone=phone_to_call,
-                callback_url="http://localhost:8000/webhook/call-outcome"
-            )
+            if hasattr(self.family_agent, "execute_outreach"):
+                outreach = self.family_agent.execute_outreach(
+                    case_id=state.input_data.case_id,
+                    recipient_phone=phone_to_call
+                )
+            elif hasattr(self.family_agent, "trigger_outreach"):
+                outreach = self.family_agent.trigger_outreach(
+                    case_id=state.input_data.case_id,
+                    nok_phone=phone_to_call,
+                    consent_granted=consent,
+                    patient_condition_summary=state.input_data.raw_input
+                )
+            else:
+                outreach = {"status": "IDLE", "call_id": None}
 
             voice_copy = state.voice_family.model_copy()
-            voice_copy.call_status = outreach["status"]
+            voice_copy.call_status = outreach.get("status", "IDLE")
             voice_copy.call_id = outreach.get("call_id")
-            voice_copy.recipient_phone = outreach.get("recipient_phone")
+            voice_copy.recipient_phone = phone_to_call
             voice_copy.consent_granted = outreach.get("consent_granted")
 
             v_elapsed = round((time.perf_counter() - v_start) * 1000.0, 2)
@@ -439,6 +492,7 @@ class GoldenOrchestrator:
         graph.add_node("triage_agent_node", triage_agent_node)
         graph.add_node("hospital_discovery_node", hospital_discovery_node)
         graph.add_node("hospital_matching_node", hospital_matching_node)
+        graph.add_node("ambulance_allocation_node", ambulance_allocation_node)
         graph.add_node("fhir_service_node", fhir_service_node)
         graph.add_node("family_communication_node", family_communication_node)
         graph.add_node("consolidation_node", consolidation_node)
@@ -471,8 +525,9 @@ class GoldenOrchestrator:
         graph.add_edge("triage_agent_node", "hospital_matching_node")
         graph.add_edge("hospital_discovery_node", "hospital_matching_node")
 
-        # Downstream operational flow: Matching -> FHIR -> Family -> Consolidation -> END
-        graph.add_edge("hospital_matching_node", "fhir_service_node")
+        # Downstream operational flow: Matching -> Ambulance Allocation -> FHIR -> Family -> Consolidation -> END
+        graph.add_edge("hospital_matching_node", "ambulance_allocation_node")
+        graph.add_edge("ambulance_allocation_node", "fhir_service_node")
         graph.add_edge("fhir_service_node", "family_communication_node")
         graph.add_edge("family_communication_node", "consolidation_node")
         graph.add_edge("consolidation_node", END)

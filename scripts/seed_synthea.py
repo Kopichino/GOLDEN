@@ -66,87 +66,11 @@ SAMPLE_SYNTHEA_PATIENTS = [
     }
 ]
 
-# Baseline Emergency Hospitals in Chennai Corridor (for Hospital & Bed Agent)
-EMERGENCY_HOSPITALS = [
-    {
-        "resourceType": "Organization",
-        "id": "hosp-rajiv-gandhi-gh",
-        "name": "Rajiv Gandhi Government General Hospital (RGGGH)",
-        "type": [{
-            "coding": [{
-                "system": "http://terminology.hl7.org/CodeSystem/organization-type",
-                "code": "prov",
-                "display": "Healthcare Provider"
-            }]
-        }],
-        "telecom": [{"system": "phone", "value": "+914425305000"}],
-        "address": [{
-            "line": ["EVR Periyar Salai, Park Town"],
-            "city": "Chennai",
-            "state": "Tamil Nadu",
-            "postalCode": "600003"
-        }],
-        "extension": [
-            {"url": "http://golden.org/fhir/trauma-level", "valueString": "LEVEL_1"},
-            {"url": "http://golden.org/fhir/icu-beds", "valueInteger": 18},
-            {"url": "http://golden.org/fhir/er-beds", "valueInteger": 25},
-            {"url": "http://golden.org/fhir/latitude", "valueDecimal": 13.0827},
-            {"url": "http://golden.org/fhir/longitude", "valueDecimal": 80.2707}
-        ]
-    },
-    {
-        "resourceType": "Organization",
-        "id": "hosp-stanley-medical",
-        "name": "Government Stanley Medical College Hospital",
-        "type": [{
-            "coding": [{
-                "system": "http://terminology.hl7.org/CodeSystem/organization-type",
-                "code": "prov",
-                "display": "Healthcare Provider"
-            }]
-        }],
-        "telecom": [{"system": "phone", "value": "+914425281351"}],
-        "address": [{
-            "line": ["Old Jail Road, Royapuram"],
-            "city": "Chennai",
-            "state": "Tamil Nadu",
-            "postalCode": "600001"
-        }],
-        "extension": [
-            {"url": "http://golden.org/fhir/trauma-level", "valueString": "LEVEL_1"},
-            {"url": "http://golden.org/fhir/icu-beds", "valueInteger": 12},
-            {"url": "http://golden.org/fhir/er-beds", "valueInteger": 15},
-            {"url": "http://golden.org/fhir/latitude", "valueDecimal": 13.1075},
-            {"url": "http://golden.org/fhir/longitude", "valueDecimal": 80.2872}
-        ]
-    },
-    {
-        "resourceType": "Organization",
-        "id": "hosp-chromepet-gh",
-        "name": "Government Hospital Chromepet",
-        "type": [{
-            "coding": [{
-                "system": "http://terminology.hl7.org/CodeSystem/organization-type",
-                "code": "prov",
-                "display": "Healthcare Provider"
-            }]
-        }],
-        "telecom": [{"system": "phone", "value": "+914422382420"}],
-        "address": [{
-            "line": ["GST Road, Chromepet"],
-            "city": "Chennai",
-            "state": "Tamil Nadu",
-            "postalCode": "600044"
-        }],
-        "extension": [
-            {"url": "http://golden.org/fhir/trauma-level", "valueString": "LEVEL_2"},
-            {"url": "http://golden.org/fhir/icu-beds", "valueInteger": 6},
-            {"url": "http://golden.org/fhir/er-beds", "valueInteger": 10},
-            {"url": "http://golden.org/fhir/latitude", "valueDecimal": 12.9516},
-            {"url": "http://golden.org/fhir/longitude", "valueDecimal": 80.1410}
-        ]
-    }
-]
+from src.data.hospitals_catalog import CHENNAI_EMERGENCY_HOSPITALS
+
+# Scaled Emergency Hospitals Catalog across Chennai & Tamil Nadu Corridors (32 facilities)
+EMERGENCY_HOSPITALS = CHENNAI_EMERGENCY_HOSPITALS
+
 
 def seed_synthea_data(client: FhirClient):
     print("Connecting to HAPI FHIR server at", client.base_url)

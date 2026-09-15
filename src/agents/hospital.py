@@ -38,18 +38,20 @@ class OsrmRouter:
         lon1: float,
         lat2: float,
         lon2: float,
-        timeout_sec: float = 1.8
-    ) -> Tuple[float, float, str]:
-        """Compute driving distance in km, ETA in minutes, and routing source.
+        timeout_sec: float = 2.0,
+        include_geometry: bool = False
+    ) -> Tuple[Any, ...]:
+        """Compute driving distance in km, ETA in minutes, routing source, and optional route geometry.
         
         Returns:
-            (driving_distance_km, eta_minutes, routing_source)
+            (driving_distance_km, eta_minutes, routing_source) if include_geometry=False
+            (driving_distance_km, eta_minutes, routing_source, route_geometry) if include_geometry=True
         """
         import json
         import urllib.request
         
         # OSRM expects coordinates in {lon},{lat} format
-        url = f"{cls.OSRM_BASE_URL}/{lon1:.6f},{lat1:.6f};{lon2:.6f},{lat2:.6f}?overview=false"
+        url = f"{cls.OSRM_BASE_URL}/{lon1:.6f},{lat1:.6f};{lon2:.6f},{lat2:.6f}?overview=full&geometries=geojson"
         try:
             req = urllib.request.Request(
                 url,
@@ -65,6 +67,14 @@ class OsrmRouter:
                         
                         dist_km = round(dist_meters / 1000.0, 2)
                         eta_mins = round(dur_seconds / 60.0, 1)
+                        raw_coords = route.get("geometry", {}).get("coordinates", [])
+                        # Convert [lon, lat] from OSRM GeoJSON to Leaflet [lat, lon]
+                        route_geom = [[float(pt[1]), float(pt[0])] for pt in raw_coords if len(pt) >= 2]
+                        if not route_geom:
+                            route_geom = [[lat1, lon1], [lat2, lon2]]
+                        
+                        if include_geometry:
+                            return dist_km, eta_mins, "OSRM", route_geom
                         return dist_km, eta_mins, "OSRM"
         except Exception:
             pass
@@ -72,9 +82,19 @@ class OsrmRouter:
         # Resilient fallback: Chennai urban road tortuosity (1.35x) and 30 km/h average speed
         straight_line = haversine_distance(lat1, lon1, lat2, lon2)
         driving_dist = round(straight_line * 1.35, 2)
-        # 30 km/h = 0.5 km/min -> time in min = dist / 0.5 = dist * 2.0
         eta_mins = round(driving_dist * 2.0, 1)
+        fallback_geom = [
+            [lat1, lon1],
+            [round(lat1 + (lat2 - lat1) * 0.33, 4), round(lon1 + (lon2 - lon1) * 0.40, 4)],
+            [round(lat1 + (lat2 - lat1) * 0.66, 4), round(lon1 + (lon2 - lon1) * 0.70, 4)],
+            [lat2, lon2]
+        ]
+        if include_geometry:
+            return driving_dist, max(1.0, eta_mins), "HAVERSINE_ESTIMATED", fallback_geom
         return driving_dist, max(1.0, eta_mins), "HAVERSINE_ESTIMATED"
+
+
+from src.data.hospitals_catalog import CHENNAI_EMERGENCY_HOSPITALS
 
 
 class HospitalDiscovery:
@@ -89,52 +109,7 @@ class HospitalDiscovery:
 
     @staticmethod
     def _get_offline_hospitals() -> List[Dict[str, Any]]:
-        return [
-            {
-                "id": "hosp-rajiv-gandhi-gh",
-                "name": "Rajiv Gandhi Government General Hospital (RGGGH)",
-                "extension": [
-                    {"url": "http://golden.org/fhir/trauma-level", "valueString": "LEVEL_1"},
-                    {"url": "http://golden.org/fhir/icu-beds", "valueInteger": 18},
-                    {"url": "http://golden.org/fhir/er-beds", "valueInteger": 25},
-                    {"url": "http://golden.org/fhir/latitude", "valueDecimal": 13.0827},
-                    {"url": "http://golden.org/fhir/longitude", "valueDecimal": 80.2707}
-                ]
-            },
-            {
-                "id": "hosp-chromepet-gh",
-                "name": "Government Hospital Chromepet",
-                "extension": [
-                    {"url": "http://golden.org/fhir/trauma-level", "valueString": "LEVEL_2"},
-                    {"url": "http://golden.org/fhir/icu-beds", "valueInteger": 6},
-                    {"url": "http://golden.org/fhir/er-beds", "valueInteger": 12},
-                    {"url": "http://golden.org/fhir/latitude", "valueDecimal": 12.9516},
-                    {"url": "http://golden.org/fhir/longitude", "valueDecimal": 80.1410}
-                ]
-            },
-            {
-                "id": "hosp-stanley-medical",
-                "name": "Government Stanley Medical College Hospital",
-                "extension": [
-                    {"url": "http://golden.org/fhir/trauma-level", "valueString": "LEVEL_1"},
-                    {"url": "http://golden.org/fhir/icu-beds", "valueInteger": 12},
-                    {"url": "http://golden.org/fhir/er-beds", "valueInteger": 15},
-                    {"url": "http://golden.org/fhir/latitude", "valueDecimal": 13.1075},
-                    {"url": "http://golden.org/fhir/longitude", "valueDecimal": 80.2872}
-                ]
-            },
-            {
-                "id": "hosp-gleneagles-global",
-                "name": "Gleneagles HealthCity Chennai",
-                "extension": [
-                    {"url": "http://golden.org/fhir/trauma-level", "valueString": "LEVEL_1"},
-                    {"url": "http://golden.org/fhir/icu-beds", "valueInteger": 24},
-                    {"url": "http://golden.org/fhir/er-beds", "valueInteger": 30},
-                    {"url": "http://golden.org/fhir/latitude", "valueDecimal": 12.8988},
-                    {"url": "http://golden.org/fhir/longitude", "valueDecimal": 80.1983}
-                ]
-            }
-        ]
+        return CHENNAI_EMERGENCY_HOSPITALS
 
     def query_candidate_hospitals(self) -> List[Dict[str, Any]]:
         # Turn 1: Retrieve organizations of type Healthcare Provider via FHIR, fallback to catalog if offline
@@ -148,17 +123,25 @@ class HospitalDiscovery:
             pass
         return self._get_offline_hospitals()
 
-    def get_hospital_capabilities(self, org_id: str) -> Dict[str, Any]:
-        # Turn 2: Targeted query for specific hospital resource to read capability extensions
+
+    def get_hospital_capabilities(
+        self,
+        org_id: str,
+        org_resource: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        # Turn 2: Read capability extensions directly from resource if present, or fetch from FHIR
         extensions = []
-        try:
-            hospital_res = self.client.get_resource("Organization", org_id)
-            extensions = hospital_res.get("extension", [])
-        except Exception:
-            for h in self._get_offline_hospitals():
-                if h["id"] == org_id:
-                    extensions = h.get("extension", [])
-                    break
+        if org_resource and "extension" in org_resource:
+            extensions = org_resource.get("extension", [])
+        else:
+            try:
+                hospital_res = self.client.get_resource("Organization", org_id)
+                extensions = hospital_res.get("extension", [])
+            except Exception:
+                for h in self._get_offline_hospitals():
+                    if h["id"] == org_id:
+                        extensions = h.get("extension", [])
+                        break
 
         caps = {
             "trauma_level": "LEVEL_2",
@@ -184,20 +167,36 @@ class HospitalDiscovery:
     def discover_candidates(
         self,
         incident_lat: float,
-        incident_lon: float
+        incident_lon: float,
+        max_candidates: int = 8
     ) -> List[HospitalCandidate]:
         """Discover nearby candidate facilities and their real-time capabilities via FHIR."""
         raw_orgs = self.query_candidate_hospitals()
-        candidates: List[HospitalCandidate] = []
+        preliminary: List[Dict[str, Any]] = []
 
+        # Stage 1A: Fast spatial pre-filtering across catalog (instant O(N) Haversine distance)
         for org in raw_orgs:
             org_id = org.get("id", "")
             org_name = org.get("name", "Unknown Hospital")
-            caps = self.get_hospital_capabilities(org_id)
-
+            caps = self.get_hospital_capabilities(org_id, org_resource=org)
             dist_km = haversine_distance(incident_lat, incident_lon, caps["latitude"], caps["longitude"])
-            driving_km, eta_mins, routing_source = OsrmRouter.get_driving_route(
-                incident_lat, incident_lon, caps["latitude"], caps["longitude"]
+            preliminary.append({
+                "org_id": org_id,
+                "org_name": org_name,
+                "caps": caps,
+                "dist_km": dist_km
+            })
+
+        preliminary.sort(key=lambda item: item["dist_km"])
+        top_candidates = preliminary[:max_candidates]
+
+
+        # Stage 1B: Precise road-network routing (OSRM) and capability hydration for nearest facilities
+        candidates: List[HospitalCandidate] = []
+        for item in top_candidates:
+            caps = item["caps"]
+            driving_km, eta_mins, routing_source, route_geom = OsrmRouter.get_driving_route(
+                incident_lat, incident_lon, caps["latitude"], caps["longitude"], include_geometry=True
             )
             trauma_level = caps["trauma_level"]
             icu_beds = caps["icu_beds"]
@@ -205,9 +204,9 @@ class HospitalDiscovery:
 
             candidates.append(
                 HospitalCandidate(
-                    hospital_id=org_id,
-                    name=org_name,
-                    distance_km=dist_km,
+                    hospital_id=item["org_id"],
+                    name=item["org_name"],
+                    distance_km=item["dist_km"],
                     driving_distance_km=driving_km,
                     eta_minutes=eta_mins,
                     routing_source=routing_source,
@@ -215,12 +214,16 @@ class HospitalDiscovery:
                     specialties_available=["trauma", "ortho", "icu"],
                     available_icu_beds=icu_beds,
                     available_er_beds=er_beds,
+                    latitude=caps["latitude"],
+                    longitude=caps["longitude"],
+                    route_geometry=route_geom,
                     score=0.0
                 )
             )
 
         candidates.sort(key=lambda x: x.distance_km)
         return candidates
+
 
 
 class HospitalMatcher:

@@ -21,6 +21,7 @@ class CaseIdentityInput(BaseModel):
     language: str = Field(default="en", description="Detected language code: en, ta, ta-en-codemix")
     modality: Literal["text", "voice_stt", "manual_dispatcher"] = Field(default="text")
     location: IncidentLocation = Field(..., description="Incident geo-coordinates and landmark")
+    consent_to_contact_nok: bool = Field(default=True, description="Caller consent to notify next of kin")
     reported_at: datetime = Field(default_factory=utc_now)
 
 # =====================================================================
@@ -68,6 +69,12 @@ class HospitalCandidate(BaseModel):
     specialties_available: List[str] = Field(default_factory=list, description="e.g. neurosurgery, ortho")
     available_icu_beds: int = Field(default=0, ge=0)
     available_er_beds: int = Field(default=0, ge=0)
+    latitude: Optional[float] = Field(default=None, description="Hospital facility latitude")
+    longitude: Optional[float] = Field(default=None, description="Hospital facility longitude")
+    route_geometry: Optional[List[List[float]]] = Field(
+        default=None,
+        description="Road network transit polyline as [[lat, lon], ...] coordinate pairs for Leaflet map"
+    )
     score: float = Field(default=0.0, description="Calculated recommendation score")
 
 class HospitalFhirOutput(BaseModel):
@@ -103,6 +110,7 @@ class VoiceFamilyOutput(BaseModel):
     ] = Field(default="IDLE")
     call_id: Optional[str] = Field(default=None, description="Exotel call SID")
     recipient_phone: Optional[str] = Field(default=None, description="Consenting team test number")
+    next_of_kin_phone: Optional[str] = Field(default=None, description="Discovered next-of-kin contact phone")
     recipient_relationship: Optional[str] = Field(default=None, description="e.g. spouse, parent")
     consent_granted: Optional[bool] = Field(default=None, description="TRAI TCCCPR 2018 consent confirmation")
     allergies: List[str] = Field(default_factory=list, description="Reported patient drug/food allergies")
@@ -112,6 +120,39 @@ class VoiceFamilyOutput(BaseModel):
     call_summary: Optional[str] = Field(default=None)
     call_duration_seconds: Optional[int] = Field(default=None, ge=0)
     resumed_at: Optional[datetime] = None
+
+# =====================================================================
+# SECTION 4B: Ambulance Fleet & Physical Dispatch (108 CAD)
+# =====================================================================
+class AmbulanceUnit(BaseModel):
+    unit_id: str = Field(..., description="Unique 108 vehicle callsign, e.g. AMB-108-01")
+    vehicle_number: str = Field(..., description="Registration number, e.g. TN-07-G-1081")
+    unit_type: Literal["ALS", "BLS", "PTS"] = Field(..., description="ALS (Advanced Life Support) vs BLS (Basic Life Support)")
+    base_station: str = Field(..., description="Base ambulance depot or junction hub")
+    latitude: float = Field(..., description="Current base station latitude")
+    longitude: float = Field(..., description="Current base station longitude")
+    status: Literal["AVAILABLE", "DISPATCHED", "EN_ROUTE_SCENE", "ON_SCENE", "TRANSPORTING"] = Field(default="AVAILABLE")
+    crew_lead_paramedic: str = Field(..., description="Senior paramedic in charge")
+    pilot_driver: str = Field(..., description="Ambulance pilot name")
+    pilot_contact: str = Field(..., description="Emergency radio or driver contact")
+    equipment_manifest: List[str] = Field(default_factory=list, description="Active medical equipment on board")
+    distance_to_scene_km: Optional[float] = Field(default=None, description="Driving distance from hub to incident in km")
+    eta_to_scene_minutes: Optional[float] = Field(default=None, description="Transit ETA from hub to incident in minutes")
+    route_geometry: Optional[List[List[float]]] = Field(default=None, description="Polyline coords from station to scene")
+    routing_source: Literal["OSRM", "HAVERSINE_ESTIMATED"] = Field(default="OSRM")
+
+class AmbulanceDispatchOutput(BaseModel):
+    dispatch_status: Literal["IDLE", "ALLOCATED", "DISPATCHED", "FAILED"] = Field(default="IDLE")
+    selected_unit: Optional[AmbulanceUnit] = None
+    candidate_units: List[AmbulanceUnit] = Field(default_factory=list)
+    callout_ticket_id: Optional[str] = Field(default=None, description="Official 108 callout ticket reference")
+    dispatch_timestamp: Optional[datetime] = None
+    acuity_demanded: Optional[str] = Field(default=None, description="ALS for RED, BLS for YELLOW/GREEN")
+    allocation_reason: Optional[str] = None
+    turn_by_turn_instructions: List[str] = Field(default_factory=list)
+    paramedic_handover_notes: Optional[str] = None
+    mission_status: str = Field(default="DISPATCHED", description="Field milestone: DISPATCHED, ACKNOWLEDGED, EN_ROUTE_SCENE, ON_SCENE, PATIENT_LOADED, ARRIVED_ED, HANDOVER_COMPLETE")
+    mission_events: List[Dict[str, Any]] = Field(default_factory=list, description="Audit log of status updates from field driver/paramedic")
 
 # =====================================================================
 # SECTION 5: Control & Audit
@@ -151,6 +192,7 @@ class ControlAudit(BaseModel):
         "HARD_SOS_CHECK",
         "PARALLEL_TRIAGE_DISCOVERY",
         "HOSPITAL_MATCHING",
+        "AMBULANCE_ALLOCATION",
         "FHIR_REGISTRATION",
         "VOICE_DISPATCH",
         "AWAITING_WEBHOOK",
@@ -183,6 +225,17 @@ class ControlAudit(BaseModel):
         )
         self.updated_at = utc_now()
 
+    def record_node_timing(self, node_name: str, latency_ms: float, is_parallel: bool = False) -> None:
+        now = utc_now()
+        self.node_timings[node_name] = NodeExecutionTiming(
+            node_name=node_name,
+            started_at=now,
+            ended_at=now,
+            latency_ms=latency_ms,
+            is_parallel=is_parallel
+        )
+        self.updated_at = now
+
 # =====================================================================
 # ROOT SHARED STATE: GoldenCaseState
 # =====================================================================
@@ -193,6 +246,7 @@ class GoldenCaseState(BaseModel):
     triage: TriageOutput = Field(default_factory=TriageOutput)
     hospital_fhir: HospitalFhirOutput = Field(default_factory=HospitalFhirOutput)
     voice_family: VoiceFamilyOutput = Field(default_factory=VoiceFamilyOutput)
+    ambulance_dispatch: AmbulanceDispatchOutput = Field(default_factory=AmbulanceDispatchOutput)
     control_audit: ControlAudit
 
     @property
@@ -202,6 +256,10 @@ class GoldenCaseState(BaseModel):
     @property
     def family(self) -> VoiceFamilyOutput:
         return self.voice_family
+
+    @property
+    def ambulance(self) -> AmbulanceDispatchOutput:
+        return self.ambulance_dispatch
 
     def add_audit_entry(self, agent_name: str, action: str, latency_ms: Optional[float] = None, details: Optional[Dict[str, Any]] = None):
         self.control_audit.audit_trail.append(
