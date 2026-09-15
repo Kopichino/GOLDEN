@@ -84,11 +84,25 @@ pip install -r requirements.txt
 2. Open the newly created `.env` file in VS Code or Notepad and set your API key:
    ```ini
    FHIR_BASE_URL=http://localhost:8080/fhir
-   GEMINI_API_KEY=AIzaSyYourActualGeminiApiKeyHere
-   DEFAULT_LLM_PROVIDER=gemini
+   GEMINI_API_KEY=
+   DEFAULT_LLM_PROVIDER=ollama_local
    HARD_SOS_BYPASS_ENABLED=True
+   VOICE_SIMULATION_ONLY=true
+   VOICE_CALLBACK_URL=http://localhost:8000/webhook/call-outcome
+   VOICE_CALLBACK_SECRET=
+   EXOTEL_ACCOUNT_SID=
+   EXOTEL_API_KEY=
+   EXOTEL_API_TOKEN=
+   EXOTEL_SUBDOMAIN=
+   EXOTEL_CALLER_ID=
+   EXOTEL_CALL_FLOW_URL=
+   EXOTEL_STREAM_URL=
+   EXOTEL_STATUS_CALLBACK_URL=
+   TEAM_CONSENT_PHONE_NUMBERS=
    ```
-   *(If you are using Groq instead of Gemini, set `DEFAULT_LLM_PROVIDER=groq` and provide `GROQ_API_KEY`)*.
+   Blank hosted-model keys are supported; the local deterministic fallback keeps
+   the demo independent of external accounts. Do not copy or reuse credentials
+   from `n8n_ai_voice_agent`.
 
 ---
 
@@ -132,7 +146,7 @@ HAPI FHIR server seeded successfully with Synthea patients & hospitals!
 
 ---
 
-### Step 7: Launch the Web Dashboard
+### Step 7: Launch the Web Dashboard and Voice Callback Route
 Start the emergency dispatcher dashboard server:
 ```powershell
 python -m uvicorn src.dashboard.server:app --port 8000 --reload
@@ -145,6 +159,33 @@ In the dashboard:
 2. Click **"Simulate Incident"** at top right.
 3. Pick a preset incident (e.g., **Tambaram Flyover Polytrauma**) and click **"Dispatch Incident"**.
 4. Watch the real-time AI triage, hospital bed reservation, and automated FHIR pre-registration happen!
+
+The same process also exposes `POST /webhook/call-outcome` for a user-owned
+voice adapter in a later deployment. The current implementation does not call a
+telephony provider: the dashboard button and `run_demo.py` use local simulated
+callbacks. This keeps the project isolated from external credentials, URLs, and
+provider-specific IDs.
+
+### Running with Other Programs
+
+Run these in separate terminals:
+
+```powershell
+# Terminal 1: HAPI FHIR
+docker compose up -d
+
+# Terminal 2: seed synthetic data, once HAPI is ready
+python scripts/seed_synthea.py
+
+# Terminal 3: dashboard + callback service
+python -m uvicorn src.dashboard.server:app --host 127.0.0.1 --port 8000 --reload
+
+# Terminal 4: optional CLI demonstration
+python scripts/run_demo.py
+```
+
+Open the dashboard at `http://127.0.0.1:8000`. Use the dashboard's simulated
+caller callback for the normal demo. No n8n process is required.
 
 ---
 
@@ -163,15 +204,25 @@ python -m pytest tests/ -v
 
 The latest verified local baseline is **35 passed** with HAPI FHIR running and seeded.
 
-Voice tests may report `CONSENT_REFUSED` for numbers outside
-`TEAM_CONSENT_PHONE_NUMBERS`; this is the intended TRAI safety guardrail, not a
-provider failure. A call ID is created only when a call is actually triggered.
+Voice tests use local simulation and fail closed when no consent register is
+configured. Live calling requires `VOICE_SIMULATION_ONLY=false`, complete new
+account configuration, and a destination in `TEAM_CONSENT_PHONE_NUMBERS`.
 
 ### Run Command-Line Simulation Demo
 To run an emergency dispatch test purely inside the terminal without the browser:
 ```powershell
 python scripts/run_demo.py
 ```
+
+For live Exotel/Gemini voice, run the WebSocket bridge in another terminal:
+
+```powershell
+python -m src.voice.voice_server
+```
+
+The dashboard remains on port 8000 and the voice server listens on the
+configured `VOICE_SERVER_HOST`, `VOICE_SERVER_PORT`, and `VOICE_SERVER_PATH`.
+Exotel must be configured with the new account's public WSS stream URL.
 
 ---
 
@@ -185,5 +236,9 @@ python scripts/run_demo.py
 - **Cause**: The container was just started and is still booting up (it takes ~15-20 seconds for the Java Spring Boot service to start).
 - **Fix**: Wait 20 seconds, verify [http://localhost:8080/fhir/metadata](http://localhost:8080/fhir/metadata) loads in your browser, and re-run your command.
 
-#### 3. Why was `# data/hapi_data/` in `.gitignore`?
+#### 3. Why does the voice flow return `CONSENT_REFUSED`?
+- **Explanation**: The destination is not in `TEAM_CONSENT_PHONE_NUMBERS`, or
+   that list is empty. GOLDEN fails closed and never calls an unconsented number.
+
+#### 4. Why was `# data/hapi_data/` in `.gitignore`?
 - **Explanation**: It was an unused entry from an initial configuration template. Docker stores HAPI FHIR data inside the virtual container directly, so no folder on your host hard drive is used or needed.

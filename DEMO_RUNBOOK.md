@@ -2,7 +2,7 @@
 
 **Target duration:** 5 minutes  
 **Audience:** Capstone panel, evaluator, or technical reviewer  
-**Mode:** Local Docker HAPI FHIR + offline triage + simulated/consent-gated voice
+**Mode:** Local Docker HAPI FHIR + offline triage + consent-gated Exotel/Gemini voice
 
 ---
 
@@ -22,7 +22,7 @@ From the repository root:
 docker compose up -d
 Invoke-RestMethod http://localhost:8080/fhir/metadata
 python scripts/seed_synthea.py
-python -m pytest -q
+python -m pytest tests/test_voice_integration.py tests/test_audio_bridge.py -q
 ```
 
 Expected evidence:
@@ -30,7 +30,7 @@ Expected evidence:
 - HAPI container is running on port `8080`.
 - FHIR metadata returns `CapabilityStatement`.
 - The seed creates 3 organizations and 4 synthetic patients.
-- The full suite reports 36 passed tests.
+- The focused voice suite reports 5 passed tests. Full-suite FHIR tests require HAPI to be fully initialized.
 
 Start the dashboard in a second terminal:
 
@@ -68,7 +68,7 @@ Narrate the workflow in this order:
    - Concurrently, Stage 1 Hospital Discovery queries HAPI FHIR and calculates Haversine distances to populate candidate facilities.
 4. **Acuity-Conditioned Matching:** At the LangGraph Join Barrier, Stage 2 Hospital Matching scores and ranks hospitals based on the validated clinical acuity, generating an auditable `ranking_reason`.
 5. **FHIR pre-registration:** The system creates `Patient`, `Encounter`, and `Condition` resources in one atomic transaction bundle.
-6. **Voice workflow:** The Family Communication Agent verifies consent before triggering outbound calls. The call is simulated only for consented test numbers; an unauthorized number produces `CONSENT_REFUSED`.
+6. **Voice workflow:** The Family Communication Agent verifies the allowlist, triggers Exotel, and pauses while the separate GOLDEN voice server bridges Exotel audio to Gemini Live. The completed call posts a signed result callback.
 7. **Human-in-the-Loop Override:** The dispatcher exercises override authority to adjust acuity or hospital destination, generating an immutable audit trail entry in `human_overrides`.
 
 Expected primary evidence:
@@ -77,7 +77,7 @@ Expected primary evidence:
 - Hospital bed status: `CONFIRMED` when HAPI is available.
 - Ranking reason: Clear explanation why the selected facility was chosen.
 - FHIR submission: `SUCCESS`.
-- Voice state: `TRIGGERED`, `IDLE`, or `CONSENT_REFUSED` depending on caller consent and configured test numbers.
+- Voice state: `TRIGGERED`, `IDLE`, or `CONSENT_REFUSED` depending on simulation/live configuration and consent.
 - Human override: Timestamped log with dispatcher rationale.
 
 ---
@@ -102,6 +102,48 @@ The terminal should show:
 - Final `COMPLETED` state with family history
 
 This is the preferred backup because it exercises the exact same LangGraph orchestrator and FHIR path without relying on browser state.
+
+### Voice Process Boundary and Direct Callback Test
+
+The dashboard process hosts the coordinator and `/webhook/call-outcome`; the
+separate `src.voice.voice_server` process hosts the Exotel WebSocket bridge.
+Both processes use only GOLDEN environment variables.
+
+Start the bridge in another PowerShell terminal:
+
+```powershell
+python -m src.voice.voice_server
+```
+
+After a case is awaiting the callback, a local client can send a structured
+callback from another PowerShell terminal:
+
+```powershell
+$payload = @{
+   thread_id = "thread-GOLDEN-..."
+   case_id = "GOLDEN-..."
+   call_id = "CALL-SIM-..."
+   call_status = "COMPLETED"
+   consent_granted = $true
+   allergies = @("Penicillin")
+   medications = @("Metformin")
+   pre_existing_conditions = @("Diabetes")
+   call_summary = "Family member confirmed the reported history."
+   call_duration_seconds = 42
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+   -Uri http://127.0.0.1:8000/webhook/call-outcome `
+   -Method Post `
+   -ContentType "application/json" `
+   -Body $payload
+```
+
+Replace the placeholder IDs with the `case_id` and `thread_id` returned by the
+dashboard's incident request. When `VOICE_CALLBACK_SECRET` is configured, the
+client must also generate the documented signature, timestamp, and nonce
+headers. The dashboard's built-in simulated callback is simpler for the panel
+demo and does not require those headers in local mode.
 
 ---
 
@@ -137,7 +179,10 @@ The system uses a deterministic offline triage fallback based on AIIMS/MoRTH gui
 
 ### Can it place real calls?
 
-Not by default. Exotel is simulation-only unless configured, and the consent register blocks unauthorized numbers.
+Yes, when `VOICE_SIMULATION_ONLY=false`, the new GOLDEN Exotel settings are
+configured, and the destination is in `TEAM_CONSENT_PHONE_NUMBERS`. The code
+does not contain or reuse any previous-project credential, URL, phone number,
+or account identifier.
 
 ### What are the limitations?
 
@@ -157,5 +202,7 @@ Before presenting, confirm:
 - [ ] One case can be dispatched from the dashboard.
 - [ ] FHIR resource IDs and ranking reasons are visible for the dispatched case.
 - [ ] Terminal backup demo is available.
+- [ ] Exotel values, if enabled, belong to the new GOLDEN account.
+- [ ] `EXOTEL_STREAM_URL` is a new operator-owned public WSS endpoint.
 - [ ] The presenter can explain synthetic data, offline fallback, two-stage hospital matching, consent safety, and human oversight.
 

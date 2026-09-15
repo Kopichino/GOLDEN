@@ -146,10 +146,13 @@ GOLDEN strictly classifies system responsibilities to ensure predictable clinica
 ### 5. Family Communication Workflow (`src/voice/family_communication.py` & `src/voice/`)
 - **Nature**: Consent-gated auxiliary communication pipeline.
 - **Components**:
-  - `FamilyCommunicationAgent`: Checks explicit consent before triggering outbound requests.
-  - `AudioBridge`: Real-time polyphase resampling between Exotel's telephony audio (8kHz G.711 PCM) and conversational wideband audio (16kHz/24kHz).
-  - `ExotelClient`: Outbound telephony client with TRAI TCCCPR 2018 compliance.
-  - `WebhookReceiver`: FastAPI endpoint resuming LangGraph execution upon next-of-kin data intake.
+   - `FamilyCommunicationAgent`: Checks explicit consent before initiating an Exotel call.
+   - `AudioBridge`: PCM resampling between Exotel 8 kHz and Gemini Live 16/24 kHz audio.
+   - `FamilyVoiceSession`: Allow-listed family-history tools that require explicit consent.
+   - `LiveVoiceBridge`: Bidirectional Exotel/Gemini Live audio and tool-call supervision.
+   - `voice_server.py`: WebSocket server receiving Exotel media streams.
+   - `WebhookReceiver`: Authenticated callback that resumes LangGraph execution.
+   - `ExotelClient`: Environment-configured outbound client with local simulation fallback.
 
 ### 6. Human Dispatcher Governance & Audit Logging (`src/dashboard/`, `src/state/schema.py`)
 - **Nature**: Human-in-the-loop control plane and auditable state machine.
@@ -210,7 +213,12 @@ d:/College/SEM7/AD/
 │   ├── voice/
 │   │   ├── family_communication.py # Consent-gated next-of-kin outreach workflow
 │   │   ├── audio_bridge.py       # 8kHz <-> 16kHz/24kHz polyphase audio resampler
-│   │   ├── exotel_client.py      # Telephony client with TRAI consent guardrails
+│   │   ├── exotel_client.py      # Environment-configured Exotel outbound client
+│   │   ├── exotel_media_gateway.py # Exotel event parsing and PCM frame conversion
+│   │   ├── gemini_live_session.py  # Gemini Live family-history session
+│   │   ├── family_voice_session.py # Consent-gated family tools
+│   │   ├── live_bridge.py        # Bidirectional realtime bridge
+│   │   └── voice_server.py       # Exotel WebSocket server
 │   │   └── webhook_receiver.py   # Webhook endpoint for call completion
 │   ├── safety/
 │   │   └── guardrails.py         # PII sanitizer, injection detector, clinical validator
@@ -247,7 +255,7 @@ d:/College/SEM7/AD/
 - **Google Gemini**: `GEMINI_API_KEY` (Free tier on Google AI Studio for Gemini 3.6 Flash).
 - **Groq**: `GROQ_API_KEY` (Free tier for Qwen 3.6 27B / Llama models).
 - **OpenRouter** *(Optional)*: `OPENROUTER_API_KEY` for fallback models.
-- **Exotel** *(Optional)*: Account SID, Key, Token for live telephony (simulation mode runs without keys).
+   - **Exotel**: New account SID, API credentials, caller ID, stream URL, and callback configuration supplied by the operator.
 - **Ollama** *(Optional)*: Local offline models (`ollama run qwen2.5:7b`).
 
 ---
@@ -276,11 +284,30 @@ copy .env.example .env
 Edit `.env` and set:
 ```ini
 FHIR_BASE_URL=http://localhost:8080/fhir
-GEMINI_API_KEY=your_gemini_api_key_here
-GROQ_API_KEY=your_groq_api_key_here
+GEMINI_API_KEY=
+GROQ_API_KEY=
 DEFAULT_LLM_PROVIDER=gemini
 HARD_SOS_BYPASS_ENABLED=True
+VOICE_SIMULATION_ONLY=true
+VOICE_CALLBACK_URL=http://localhost:8000/webhook/call-outcome
+VOICE_CALLBACK_SECRET=
+EXOTEL_ACCOUNT_SID=
+EXOTEL_API_KEY=
+EXOTEL_API_TOKEN=
+EXOTEL_SUBDOMAIN=
+EXOTEL_CALLER_ID=
+EXOTEL_CALL_FLOW_URL=
+EXOTEL_STREAM_URL=
+EXOTEL_STATUS_CALLBACK_URL=
+TEAM_CONSENT_PHONE_NUMBERS=
+VOICE_SERVER_HOST=127.0.0.1
+VOICE_SERVER_PORT=8765
+VOICE_SERVER_PATH=/ws
 ```
+
+Leave all account-specific values blank for simulation. For live calls, populate
+only the new GOLDEN Exotel account values. Nothing is copied from
+`n8n_ai_voice_agent`.
 
 ### Step 3: Start the Local HAPI FHIR Server
 Make sure Docker Desktop is running, then start the container:
@@ -315,11 +342,33 @@ are tracked in [CAPSTONE_EXECUTION_PLAN.md](CAPSTONE_EXECUTION_PLAN.md).
 For the panel presentation sequence and backup terminal demo, use
 [DEMO_RUNBOOK.md](DEMO_RUNBOOK.md).
 
-### Step 5: Start the Live Dispatcher Dashboard
+### Step 5: Start the Dispatcher and Voice Callback Service
 Start the FastAPI server on port 8000:
 ```powershell
 python -m uvicorn src.dashboard.server:app --port 8000 --reload
 ```
+
+This process serves the dispatcher dashboard and canonical voice callback route.
+Start the realtime Exotel/Gemini bridge in a second terminal:
+
+```powershell
+python -m src.voice.voice_server
+```
+
+The two services are the dashboard at `http://127.0.0.1:8000` and the voice
+server at `ws://127.0.0.1:8765/ws`. Exotel must reach the public WSS URL in
+`EXOTEL_STREAM_URL`; do not reuse a legacy tunnel or URL.
+
+```text
+GET  /api/health
+POST /webhook/call-outcome
+POST /api/cases/{case_id}/webhook   # local dashboard simulation helper
+```
+
+The voice callback accepts `case_id`, `thread_id`, `call_id`, consent, and
+family-reported history. When `VOICE_CALLBACK_SECRET` is set, send the
+`X-Golden-Signature`, `X-Golden-Timestamp`, and `X-Golden-Nonce` headers. With
+the default blank secret, local development remains unsigned.
 
 ### Step 6: Test Live Emergency Dispatch in Browser
 1. Open your browser and navigate to: **[http://localhost:8000](http://localhost:8000)**.
@@ -332,6 +381,26 @@ python -m uvicorn src.dashboard.server:app --port 8000 --reload
    - Atomic pre-registration links generated for `Patient/`, `Encounter/`, and `Condition/`.
 6. Click **"Simulate Caller Webhook Callback"** to simulate next-of-kin telephone contact: watch patient allergy tags (`Ciprofloxacin`, `Shellfish`, `Metformin`) render in real-time.
 7. Click **"Dispatcher Override"** to test human-in-the-loop control with persistent audit logging.
+
+### Running Alongside Other Programs
+
+Use separate terminals or processes so each local component has one clear role:
+
+| Program | Command | Role |
+| --- | --- | --- |
+| Docker Desktop | `docker compose up -d` | Runs HAPI FHIR on port 8080. |
+| Seed script | `python scripts/seed_synthea.py` | Loads synthetic hospitals and patients. |
+| Dashboard process | `python -m uvicorn src.dashboard.server:app --port 8000` | Runs the UI, coordinator, SSE stream, and voice callback route. |
+| Voice server | `python -m src.voice.voice_server` | Receives Exotel media and bridges it to Gemini Live. |
+| Browser or PowerShell | `http://localhost:8000` or `Invoke-RestMethod` | Drives incidents and local webhook simulation. |
+| CLI demo | `python scripts/run_demo.py` | Runs an independent terminal demonstration. |
+
+Do not start `n8n_ai_voice_agent` as part of GOLDEN. GOLDEN does not import its
+`.env`, workflows, credentials, URLs, call IDs, or provider client.
+
+For live calls set `VOICE_SIMULATION_ONLY=false`, configure only the new GOLDEN
+Exotel account, and add destinations to `TEAM_CONSENT_PHONE_NUMBERS`. The local
+dashboard simulation remains available without external credentials.
 
 ---
 

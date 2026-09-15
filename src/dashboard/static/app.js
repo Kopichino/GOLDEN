@@ -467,12 +467,15 @@ async function handleDispatchSimulation() {
     payload = {
       custom_input: customNarrative,
       landmark: customLandmark || "Tambaram Signal, Chennai",
-      caller_phone: customPhone || "+91 94441 23456",
+      caller_phone: customPhone || undefined,
       latitude: 12.9249,
       longitude: 80.1472
     };
   } else {
-    payload = { preset_key: selectedPresetKey };
+    payload = {
+      preset_key: selectedPresetKey,
+      caller_phone: customPhone || undefined
+    };
   }
 
   btnSubmitSimulation.disabled = true;

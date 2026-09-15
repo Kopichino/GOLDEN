@@ -110,7 +110,7 @@ def run_happy_path_demo(
     print("  * Simulating incoming disclosure payload from voice bridge to /webhook/call-outcome...")
     orchestrator.resume_from_voice_webhook(
         thread_id=thread_id,
-        call_id=dispatched_state.voice_family.call_id or "EXO-SIM-001",
+        call_id=dispatched_state.voice_family.call_id or "CALL-SIM-001",
         call_status="COMPLETED",
         allergies=["Ciprofloxacin", "Shellfish"],
         medications=["Telmisartan 40mg (Hypertension)"],

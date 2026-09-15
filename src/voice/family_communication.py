@@ -2,7 +2,7 @@
 
 Responsible for:
 1. Consent-gated outbound family outreach (TRAI TCCCPR 2018 compliance).
-2. Telephony transport coordination via ExotelClient (simulation or live).
+2. Consent-gated Exotel transport coordination with local simulation fallback.
 3. Structured collection and sanitization of reported medical disclosures
    (allergies, active medications, blood group, chronic conditions).
 4. Emitting structured state updates for durable checkpoint resumption.
@@ -14,8 +14,9 @@ Explicit Non-Responsibilities:
 """
 
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, List, Optional
 from src.voice.exotel_client import ExotelClient
+from src.config import settings
 from src.safety.guardrails import PIISanitizer
 from src.state.schema import VoiceFamilyOutput
 
@@ -29,7 +30,8 @@ class FamilyCommunicationAgent:
         self,
         case_id: str,
         recipient_phone: Optional[str],
-        callback_url: str = "http://localhost:8000/webhook/call-outcome"
+        callback_url: Optional[str] = None,
+        thread_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Initiate consent-gated family outreach.
 
@@ -60,7 +62,8 @@ class FamilyCommunicationAgent:
         result = self.client.trigger_outbound_call(
             recipient_phone=recipient_phone,
             case_id=case_id,
-            callback_url=callback_url
+            callback_url=callback_url or settings.EXOTEL_STATUS_CALLBACK_URL,
+            thread_id=thread_id,
         )
 
         status = result.get("status", "TRIGGERED")
@@ -71,7 +74,7 @@ class FamilyCommunicationAgent:
             "call_id": call_id,
             "recipient_phone": recipient_phone,
             "consent_granted": True,
-            "provider": result.get("provider", "exotel_simulation"),
+            "provider": result.get("provider", "local_simulation"),
             "message": result.get("message", f"Call dispatched to {sanitized_phone}")
         }
 
@@ -84,7 +87,8 @@ class FamilyCommunicationAgent:
         blood_group: Optional[str] = None,
         conditions: Optional[List[str]] = None,
         summary: Optional[str] = None,
-        duration_sec: Optional[int] = None
+        duration_sec: Optional[int] = None,
+        consent_granted: bool = True,
     ) -> VoiceFamilyOutput:
         """Parse, sanitize, and structure incoming disclosures from telephony webhook."""
         clean_allergies = [PIISanitizer.sanitize(a.strip()) for a in (allergies or []) if a.strip()]
@@ -98,7 +102,7 @@ class FamilyCommunicationAgent:
         return VoiceFamilyOutput(
             call_status=call_status, # type: ignore
             call_id=call_id,
-            consent_granted=True,
+            consent_granted=consent_granted,
             allergies=clean_allergies,
             medications=clean_meds,
             blood_group=clean_bg,

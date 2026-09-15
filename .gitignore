@@ -24,8 +24,10 @@ htmlcov/
 # Docker / DB data
 # data/hapi_data/
 *.log
+logs/
 
 # Models & Large Synthea Archives
 *.tar.gz
 *.zip
 data/synthea_output/
+.active_calls.json

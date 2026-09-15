@@ -25,6 +25,7 @@ from src.state.schema import (
     ControlAudit,
     NodeExecutionTiming,
 )
+from src.config import settings
 from src.agents.hard_sos import HardSosEngine
 from src.agents.triage import TriageAgent
 from src.agents.hospital import (
@@ -370,7 +371,7 @@ class GoldenOrchestrator:
             outreach = self.family_agent.execute_outreach(
                 case_id=state.input_data.case_id,
                 recipient_phone=phone_to_call,
-                callback_url="http://localhost:8000/webhook/call-outcome"
+                thread_id=state.control_audit.thread_id,
             )
 
             voice_copy = state.voice_family.model_copy()
@@ -496,7 +497,8 @@ class GoldenOrchestrator:
         blood_group: Optional[str] = None,
         conditions: Optional[List[str]] = None,
         summary: Optional[str] = None,
-        duration_sec: Optional[int] = None
+        duration_sec: Optional[int] = None,
+        consent_granted: bool = True,
     ) -> bool:
         """Resume paused workflow checkpoint upon arrival of telephony webhook."""
         config = {"configurable": {"thread_id": thread_id}}
@@ -515,7 +517,8 @@ class GoldenOrchestrator:
             blood_group=blood_group,
             conditions=conditions,
             summary=summary,
-            duration_sec=duration_sec
+            duration_sec=duration_sec,
+            consent_granted=consent_granted,
         )
 
         current_state.voice_family = disclosure

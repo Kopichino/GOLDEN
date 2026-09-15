@@ -76,7 +76,7 @@ def test_coordinator_parallel_fanout_and_webhook_resumption():
     # 3. Webhook arrives with next-of-kin information
     resumed = coordinator.resume_from_voice_webhook(
         thread_id=thread_id,
-        call_id=dispatched_state.voice_family.call_id or "EXO-SIM-001",
+        call_id=dispatched_state.voice_family.call_id or "CALL-SIM-001",
         call_status="COMPLETED",
         allergies=["Penicillin", "Peanuts"],
         medications=["Metformin 500mg"],
