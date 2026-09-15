@@ -38,7 +38,7 @@ As of the **Phase 2 Architecture Refactoring**, GOLDEN is an operational, end-to
 | **Two-Stage Hospital Matching** | **Specialist Workflow** | Haversine Math + Acuity-Conditioned Scoring | Stage 1 discovery concurrent with triage; Stage 2 acuity-conditioned matching & ranking at Join Barrier |
 | **Atomic Pre-Registration**| **Tool Integration Layer** | FHIR R4 Transaction Bundles | Auto-creates `Patient`, `Encounter`, and `Condition` resources on HAPI FHIR before ambulance arrives |
 | **GOLDEN Orchestrator** | **Workflow State Machine** | LangGraph `StateGraph` + `MemorySaver` | Manages fan-out concurrency, join barriers, conditional edges, and async pause/resumption (not an AI agent) |
-| **Family Communication** | **Consent-Gated Workflow**| Python Workflow + Exotel Client | Checks consent before outbound voice notification; collects next-of-kin allergy data |
+| **Family Communication** | **Consent-Gated Workflow**| Python Workflow + Exotel/Gemini Live | Checks consent before outreach; collects next-of-kin allergy data |
 | **Voice Audio Bridge** | **Audio Tool** | NumPy & SciPy Polyphase Resampling | Converts 8kHz telephony audio $\leftrightarrow$ 16/24kHz wideband LLM audio |
 | **Safety Guardrails** | **Security & Guardrail Layer**| Python Regex + Schema Gateways | Indian Aadhaar/Phone PII masking, prompt injection neutralization, and downgrade protection |
 | **Live Dispatcher Console**| **Human Control Plane** | FastAPI + Server-Sent Events (SSE) + Vanilla HTML/CSS/JS | Real-time browser dashboard on port `8000` with auditable Human-in-the-Loop overrides |
@@ -313,7 +313,7 @@ Protects against malicious or adversarial inputs (e.g. someone typing: *"Ignore 
 
 ---
 
-## 8. Voice Telephony, Family Contact Discovery & Webhook Resumption
+## 8. Voice Family-History Workflow & Webhook Resumption
 
 ### A Critical Question: "How does the system know who to contact for family telephony?"
 
@@ -353,7 +353,7 @@ In emergency response, an unconscious polytrauma patient cannot speak. How does 
                                       │
                                       ▼
                       ┌───────────────────────────────┐
-                      │ Exotel Outbound Voice Dispatch│
+                      │ Local Voice Simulation / Adapter Boundary │
                       └───────────────────────────────┘
 ```
 
@@ -387,12 +387,11 @@ In emergency response, an unconscious polytrauma patient cannot speak. How does 
 phone_to_call = state.voice_family.recipient_phone or state.input_data.caller_phone
 ```
 
-#### TRAI TCCCPR 2018 Regulatory Guardrail (`src/voice/exotel_client.py`)
-India's **Telecom Commercial Communications Customer Preference Regulations (TCCCPR 2018)** strictly prohibit automated algorithmic robocalling to non-consenting telephone numbers.
-- In production, emergency 108 services operate under statutory life-safety exemptions.
-- During capstone development and academic evaluation, GOLDEN enforces a **Simulation Mode Guardrail**:
-  - `SIMULATION_MODE = True`: The system simulates the SIP call lifecycle, generates mock call SIDs (`EXO-SIM-XXXXXX`), and awaits the webhook callback without incurring telephony charges or making unsolicited calls.
-  - If live calling is enabled, calls are restricted strictly to whitelisted numbers configured in `.env` (`TEAM_CONSENT_PHONE_NUMBERS`).
+#### Account-Isolation Guardrail
+GOLDEN supports Exotel calls, but all account-specific values are loaded from
+the new account's environment configuration. No credential, URL, phone number,
+account identifier, or call-flow value is copied from another project. An empty
+consent register fails closed, so the system cannot call arbitrary numbers.
 
 ---
 
@@ -400,11 +399,26 @@ India's **Telecom Commercial Communications Customer Preference Regulations (TCC
 In real Indian emergency dispatches, by the time an ambulance arrives at the scene, the hospital knows almost nothing about the patient's **medical history**, **blood group**, or **drug allergies**. Administering standard antibiotics (e.g. Ciprofloxacin or Penicillin) can trigger fatal anaphylaxis if the patient has an allergy.
 
 ### How GOLDEN Solves This:
-1. **Parallel Outbound Call**: As the ambulance is dispatched, the Voice Agent triggers an automated outbound voice call to the next-of-kin via **Exotel Telephony** (`src/voice/exotel_client.py`).
-2. **Audio Bridge Resampling** (`src/voice/audio_bridge.py`): Real-time polyphase resampling between Exotel's telephony audio (8kHz G.711 PCM) and conversational wideband audio (16kHz/24kHz) using NumPy and SciPy.
-3. **LangGraph Pause (`AWAITING_WEBHOOK`)**: LangGraph halts execution using durable checkpointing (`MemorySaver`).
-4. **Webhook Resumption (`/webhook/call-outcome`)**: When the family member discloses allergies (e.g. *Ciprofloxacin, Shellfish*) and medications (*Metformin*), the webhook posts to the server.
-5. **State Merging**: The coordinator resumes the exact checkpoint, updates the FHIR patient record with the verified allergies, and completes the case.
+1. **Exotel outbound call**: The Family Communication Agent verifies the allowlist and `ExotelClient` submits a form-encoded call request using only new GOLDEN environment values.
+2. **Bidirectional stream**: Exotel connects to `voice_server.py`, which validates GOLDEN metadata and starts a Gemini Live session.
+3. **LangGraph pause (`AWAITING_WEBHOOK`)**: The coordinator stores the case checkpoint while waiting for family history.
+4. **Audio bridge**: Exotel 8 kHz PCM is resampled to Gemini 16 kHz input; Gemini 24 kHz output is resampled back to Exotel 8 kHz.
+5. **Webhook resumption (`/webhook/call-outcome`)**: The voice server posts a signed structured callback, the dashboard validates it, checks `case_id` against `thread_id`, and resumes the coordinator.
+6. **State merging**: Sanitized allergies, medications, blood group, conditions, and summary are stored as family-reported data for dispatcher review.
+
+### Running the Voice Workflow with Other Programs
+
+The local demonstration uses cooperating processes:
+
+1. Docker Desktop runs HAPI FHIR on port `8080`.
+2. `uvicorn src.dashboard.server:app` runs the dashboard, LangGraph coordinator, SSE events, and `/webhook/call-outcome`.
+3. `python -m src.voice.voice_server` runs the Exotel WebSocket and Gemini Live bridge.
+4. A browser or PowerShell sends incident and simulation requests.
+5. `python scripts/run_demo.py` can run the same workflow from a separate terminal.
+
+The unrelated `n8n_ai_voice_agent` project is not started, imported, or used by
+GOLDEN. Its environment file, credentials, workflows, provider URLs, and IDs
+are outside the GOLDEN runtime boundary.
 
 ---
 

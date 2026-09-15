@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 import qrcode
 from qrcode.image.svg import SvgPathImage
-from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Response
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -37,6 +37,8 @@ from src.state.schema import (
 )
 from src.agents.coordinator import GoldenOrchestrator, GoldenCoordinator
 from src.safety.guardrails import PIISanitizer, PromptInjectionDetector
+from src.voice.callback_security import CallbackSecurity
+from src.voice.webhook_receiver import CallOutcomeWebhookPayload, handle_call_outcome
 
 app = FastAPI(title="GOLDEN Emergency Dispatcher Console", version="1.0.0")
 
@@ -70,6 +72,10 @@ def broadcast_event(event_dict: Dict[str, Any]) -> None:
                 sse_subscribers.remove(queue)
 
 coordinator = GoldenCoordinator(event_callback=broadcast_event)
+callback_security = CallbackSecurity(
+    settings.VOICE_CALLBACK_SECRET,
+    settings.VOICE_CALLBACK_MAX_AGE_SECONDS,
+)
 
 # Pre-defined emergency simulation scenarios
 PRESET_SCENARIOS = {
@@ -137,6 +143,25 @@ class OnSceneIdentificationRequest(BaseModel):
     relationship: str = "Family / Next-of-Kin"
     next_of_kin_phone: str
     clinical_notes: Optional[str] = None
+
+@app.post("/webhook/call-outcome")
+async def receive_voice_call_outcome(
+    request: Request,
+    payload: CallOutcomeWebhookPayload,
+    x_golden_signature: Optional[str] = Header(default=None),
+    x_golden_timestamp: Optional[str] = Header(default=None),
+    x_golden_nonce: Optional[str] = Header(default=None),
+):
+    """Receive authenticated provider callbacks in the primary FastAPI app."""
+    valid, reason = callback_security.validate(
+        await request.body(),
+        signature=x_golden_signature,
+        timestamp=x_golden_timestamp,
+        nonce=x_golden_nonce,
+    )
+    if not valid:
+        raise HTTPException(status_code=401, detail=reason)
+    return handle_call_outcome(payload, coordinator)
 
 @app.get("/api/events")
 async def sse_events(request: Request):
@@ -295,7 +320,7 @@ def trigger_simulation(req: SimulateRequest, background_tasks: BackgroundTasks):
         lon = preset["longitude"]
         landmark = preset["address"]
         district = preset.get("district", "Chennai")
-        phone = preset["caller_phone"]
+        phone = req.caller_phone or preset["caller_phone"]
         lang = preset["language"]
     else:
         raw_text = req.custom_input or "Emergency road accident reported. Urgent trauma care needed."
@@ -345,7 +370,7 @@ def inject_webhook(case_id: str, req: WebhookInjectRequest):
 
     resumed = coordinator.resume_from_voice_webhook(
         thread_id=thread_id,
-        call_id=state.voice_family.call_id or f"EXO-SIM-{uuid.uuid4().hex[:8]}",
+        call_id=state.voice_family.call_id or f"CALL-SIM-{uuid.uuid4().hex[:8]}",
         call_status="COMPLETED",
         allergies=req.allergies,
         medications=req.medications,

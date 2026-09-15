@@ -1336,7 +1336,10 @@ async function handleDispatchSimulation() {
       longitude: !isNaN(customLon) ? customLon : 80.1472
     };
   } else {
-    payload = { preset_key: selectedPresetKey };
+    payload = {
+      preset_key: selectedPresetKey,
+      caller_phone: customPhone || undefined
+    };
   }
 
   btnSubmitSimulation.disabled = true;

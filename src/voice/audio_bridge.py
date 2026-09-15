@@ -17,6 +17,24 @@ class AudioBridge:
         pcm = (clipped * 32767.0).astype(np.int16)
         return pcm.tobytes()
 
+    @staticmethod
+    def pcm16_rms(pcm_bytes: bytes) -> float:
+        """Return PCM RMS without allocating float64 samples."""
+        if not pcm_bytes:
+            return 0.0
+        samples = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32)
+        if samples.size == 0:
+            return 0.0
+        return float(np.sqrt(np.mean(samples * samples)))
+
+    @staticmethod
+    def fast_resample_8k_to_16k(pcm8k_bytes: bytes) -> bytes:
+        """Upsample telephony PCM by duplication for low-latency realtime input."""
+        if not pcm8k_bytes:
+            return b""
+        samples = np.frombuffer(pcm8k_bytes, dtype=np.int16)
+        return np.repeat(samples, 2).astype(np.int16, copy=False).tobytes()
+
     @classmethod
     def resample_8k_to_16k(cls, pcm8k_bytes: bytes) -> bytes:
         if not pcm8k_bytes:
