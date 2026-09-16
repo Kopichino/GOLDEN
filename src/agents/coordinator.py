@@ -406,33 +406,27 @@ class GoldenOrchestrator:
         # 8. Family Communication Node (Consent-Gated Outreach)
         # -------------------------------------------------------------
         def family_communication_node(state: GoldenCaseState) -> Dict[str, Any]:
+            """Prepare family outreach but DO NOT place the call.
+
+            The AI voice call is triggered from the ambulance driver dashboard
+            once the crew identifies the victim and the next-of-kin contact on
+            scene (`POST /api/driver/{ticket}/identification`). This node only
+            reserves the workflow stage so the checkpoint can be resumed by the
+            voice completion webhook afterwards.
+            """
             v_start = time.perf_counter()
             control_copy = state.control_audit.model_copy()
             control_copy.current_node = "family_communication_node"
             control_copy.execution_stage = "VOICE_DISPATCH"
 
-            phone_to_call = state.voice_family.recipient_phone or state.input_data.caller_phone
-            if hasattr(self.family_agent, "execute_outreach"):
-                outreach = self.family_agent.execute_outreach(
-                    case_id=state.input_data.case_id,
-                    recipient_phone=phone_to_call,
-                    thread_id=state.control_audit.thread_id,
-                )
-            elif hasattr(self.family_agent, "trigger_outreach"):
-                outreach = self.family_agent.trigger_outreach(
-                    case_id=state.input_data.case_id,
-                    nok_phone=phone_to_call,
-                    consent_granted=consent,
-                    patient_condition_summary=state.input_data.raw_input
-                )
-            else:
-                outreach = {"status": "IDLE", "call_id": None}
-
             voice_copy = state.voice_family.model_copy()
-            voice_copy.call_status = outreach.get("status", "IDLE")
-            voice_copy.call_id = outreach.get("call_id")
-            voice_copy.recipient_phone = phone_to_call
-            voice_copy.consent_granted = outreach.get("consent_granted")
+            if voice_copy.call_status in {"TRIGGERED", "IN_PROGRESS", "COMPLETED"}:
+                # The crew already triggered outreach while the workflow ran.
+                phone = voice_copy.recipient_phone
+            else:
+                voice_copy.call_status = "IDLE"
+                voice_copy.call_triggered_by = None
+                phone = voice_copy.recipient_phone or state.input_data.caller_phone
 
             v_elapsed = round((time.perf_counter() - v_start) * 1000.0, 2)
             control_copy.node_timings["family_communication_node"] = NodeExecutionTiming(
@@ -443,11 +437,10 @@ class GoldenOrchestrator:
                 is_parallel=False
             )
 
-            self.emit_event("FAMILY_OUTREACH_TRIGGERED", state.input_data.case_id, {
-                "call_id": voice_copy.call_id,
-                "recipient": PIISanitizer.sanitize(phone_to_call or ""),
-                "status": voice_copy.call_status,
-                "message": outreach.get("message")
+            self.emit_event("FAMILY_OUTREACH_DEFERRED", state.input_data.case_id, {
+                "recipient": PIISanitizer.sanitize(phone or ""),
+                "call_status": voice_copy.call_status,
+                "message": "Family voice call deferred: awaiting on-scene identification from the ambulance crew dashboard."
             })
 
             return {"voice_family": voice_copy, "control_audit": control_copy}
@@ -460,12 +453,16 @@ class GoldenOrchestrator:
             control_copy = state.control_audit.model_copy()
             control_copy.current_node = "consolidation_node"
 
-            phone_to_call = state.voice_family.recipient_phone or state.input_data.caller_phone
-            if phone_to_call:
+            call_status = state.voice_family.call_status
+            if call_status in {"TRIGGERED", "IN_PROGRESS"}:
                 control_copy.execution_stage = "AWAITING_WEBHOOK"
-            else:
+            elif call_status in {"COMPLETED", "FAILED", "NO_ANSWER", "CONSENT_REFUSED"}:
                 control_copy.execution_stage = "DISPATCHER_REVIEW"
                 control_copy.completed_at = datetime.now(timezone.utc)
+            else:
+                # Outreach deferred: the ambulance crew triggers the AI call
+                # from the driver dashboard after on-scene identification.
+                control_copy.execution_stage = "AWAITING_FAMILY_CONTACT"
 
             c_elapsed = round((time.perf_counter() - c_start) * 1000.0, 2)
             control_copy.node_timings["consolidation_node"] = NodeExecutionTiming(
@@ -543,6 +540,105 @@ class GoldenOrchestrator:
         final_state_dict = self.app.invoke(initial_state, config=config)
         return GoldenCaseState.model_validate(final_state_dict)
 
+    def trigger_family_outreach(
+        self,
+        case_id: str,
+        recipient_phone: str,
+        thread_id: Optional[str] = None,
+        relationship: Optional[str] = None,
+        consent_basis: Optional[str] = None,
+        triggered_by: str = "driver_on_scene",
+        fallback_state: Optional[GoldenCaseState] = None,
+    ) -> Dict[str, Any]:
+        """Place the family AI voice call from an external trigger (driver dashboard).
+
+        Persists the outreach into the LangGraph checkpoint when the thread
+        exists, so the voice completion webhook can resume the same execution.
+        When no checkpoint exists yet (e.g. unit tests or pre-workflow cases),
+        `fallback_state` is mutated in place instead.
+        """
+        resolved_thread = thread_id or f"thread-{case_id}"
+        config = {"configurable": {"thread_id": resolved_thread}}
+        checkpoint = None
+        try:
+            checkpoint = self.app.get_state(config)
+        except Exception:
+            checkpoint = None
+
+        state: Optional[GoldenCaseState] = None
+        if checkpoint and checkpoint.values:
+            try:
+                state = GoldenCaseState.model_validate(checkpoint.values)
+            except Exception:
+                state = None
+        if state is None:
+            state = fallback_state
+
+        if state is None:
+            return {
+                "success": False,
+                "status": "FAILED",
+                "call_id": None,
+                "message": f"No workflow checkpoint found for case {case_id}; cannot bind outreach.",
+            }
+
+        voice_copy = state.voice_family.model_copy()
+        voice_copy.next_of_kin_phone = recipient_phone
+        voice_copy.recipient_phone = recipient_phone
+        if relationship:
+            voice_copy.recipient_relationship = relationship
+        voice_copy.call_triggered_by = triggered_by
+        voice_copy.consent_basis = consent_basis
+        voice_copy.call_status = "TRIGGERED"
+
+        outreach = self.family_agent.execute_outreach(
+            case_id=case_id,
+            recipient_phone=recipient_phone,
+            thread_id=resolved_thread,
+            consent_basis=consent_basis,
+            triggered_by=triggered_by,
+        )
+
+        voice_copy.call_status = outreach.get("status", "TRIGGERED")
+        voice_copy.call_id = outreach.get("call_id")
+        voice_copy.consent_granted = outreach.get("consent_granted", True)
+        state.voice_family = voice_copy
+        if voice_copy.call_status in {"TRIGGERED", "IN_PROGRESS", "COMPLETED"}:
+            # Call is live: the workflow now waits for the voice completion webhook.
+            state.control_audit.execution_stage = "AWAITING_WEBHOOK"
+        state.add_audit_entry(
+            agent_name="family_communication_agent",
+            action="outreach_triggered_by_driver",
+            details={
+                "call_id": voice_copy.call_id,
+                "status": voice_copy.call_status,
+                "consent_basis": consent_basis,
+                "triggered_by": triggered_by,
+                "relationship": relationship,
+            },
+        )
+
+        if checkpoint and checkpoint.values:
+            self.app.update_state(config, state)
+
+        self.emit_event("FAMILY_OUTREACH_TRIGGERED", case_id, {
+            "call_id": voice_copy.call_id,
+            "recipient": PIISanitizer.sanitize(recipient_phone or ""),
+            "status": voice_copy.call_status,
+            "triggered_by": triggered_by,
+            "consent_basis": consent_basis,
+            "message": outreach.get("message"),
+        })
+
+        return {
+            "success": voice_copy.call_status in {"TRIGGERED", "IN_PROGRESS", "COMPLETED"},
+            "status": voice_copy.call_status,
+            "call_id": voice_copy.call_id,
+            "provider": outreach.get("provider"),
+            "message": outreach.get("message"),
+            "voice_family": voice_copy,
+        }
+
     def resume_from_voice_webhook(
         self,
         thread_id: str,
@@ -563,6 +659,7 @@ class GoldenOrchestrator:
             return False
 
         current_state = GoldenCaseState.model_validate(current_checkpoint.values)
+        previous_voice = current_state.voice_family
 
         # Process disclosure via specialist agent
         disclosure = self.family_agent.process_webhook_disclosure(
@@ -578,6 +675,27 @@ class GoldenOrchestrator:
         )
 
         current_state.voice_family = disclosure
+        # Carry forward the outreach attribution recorded when the driver triggered the call.
+        disclosure.call_triggered_by = previous_voice.call_triggered_by
+        disclosure.consent_basis = previous_voice.consent_basis
+
+        # Register the collected family history in FHIR against the
+        # pre-registered patient so the hospital sees the voice results.
+        try:
+            fhir_update = self.fhir_service.submit_family_history_update(
+                patient_id=current_state.hospital_fhir.fhir_patient_id,
+                encounter_id=current_state.hospital_fhir.fhir_encounter_id,
+                allergies=disclosure.allergies,
+                medications=disclosure.medications,
+                blood_group=disclosure.blood_group,
+                conditions=disclosure.pre_existing_conditions,
+                summary=disclosure.call_summary,
+            )
+        except Exception as exc:
+            fhir_update = {"status": "FAILED", "resource_ids": [], "message": str(exc)}
+        disclosure.fhir_update_status = fhir_update.get("status", "FAILED")
+        disclosure.fhir_update_resource_ids = fhir_update.get("resource_ids", [])
+
         current_state.control_audit.execution_stage = "COMPLETED"
         current_state.control_audit.completed_at = datetime.now(timezone.utc)
         current_state.add_audit_entry(
@@ -588,7 +706,9 @@ class GoldenOrchestrator:
                 "allergies": disclosure.allergies,
                 "medications": disclosure.medications,
                 "blood_group": disclosure.blood_group,
-                "call_duration_seconds": disclosure.call_duration_seconds
+                "call_duration_seconds": disclosure.call_duration_seconds,
+                "fhir_update_status": disclosure.fhir_update_status,
+                "fhir_update_resource_ids": disclosure.fhir_update_resource_ids
             }
         )
 
@@ -598,6 +718,11 @@ class GoldenOrchestrator:
             "allergies": disclosure.allergies,
             "medications": disclosure.medications,
             "blood_group": disclosure.blood_group
+        })
+        self.emit_event("FHIR_FAMILY_HISTORY_UPDATED", current_state.input_data.case_id, {
+            "status": disclosure.fhir_update_status,
+            "resource_ids": disclosure.fhir_update_resource_ids,
+            "patient_id": current_state.hospital_fhir.fhir_patient_id
         })
         return True
 

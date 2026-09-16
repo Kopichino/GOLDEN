@@ -46,8 +46,13 @@ class ExotelClient:
         case_id: str,
         callback_url: Optional[str] = None,
         thread_id: Optional[str] = None,
+        consent_basis: Optional[str] = None,
+        triggered_by: Optional[str] = None,
     ) -> Dict[str, Any]:
-        if not self.verify_consent(recipient_phone):
+        # The consent register only gates workflow-initiated calls. Crew-initiated
+        # outreach carries an explicit consent basis (family member identified on
+        # scene) which is recorded for the TRAI TCCCPR audit trail instead.
+        if consent_basis is None and not self.verify_consent(recipient_phone):
             return {
                 "status": "CONSENT_REFUSED",
                 "call_id": None,
@@ -56,6 +61,11 @@ class ExotelClient:
 
         if settings.VOICE_SIMULATION_ONLY:
             simulated_call_id = f"CALL-SIM-{uuid.uuid4().hex[:8]}"
+            self._record_trigger(
+                simulated_call_id, case_id, thread_id, recipient_phone,
+                provider="local_simulation", status="TRIGGERED",
+                consent_basis=consent_basis, triggered_by=triggered_by,
+            )
             return {
                 "status": "TRIGGERED",
                 "call_id": simulated_call_id,
@@ -81,7 +91,7 @@ class ExotelClient:
             "CallerId": self.caller_id,
             "StreamUrl": stream_url,
             "StreamType": "bidirectional",
-            "StatusCallback": callback_url or settings.EXOTEL_STATUS_CALLBACK_URL,
+            "StatusCallback": callback_url or settings.EXOTEL_STATUS_CALLBACK_URL or self._derive_status_callback_url(),
             "Record": str(settings.EXOTEL_RECORD_CALLS).lower(),
         }
         # NOTE: Do NOT add 'Url' (ExoML app) here — combining Url + StreamUrl causes
@@ -138,6 +148,11 @@ class ExotelClient:
             thread_id=thread_id or f"thread_{case_id}",
             recipient_phone=recipient_phone,
         )
+        self._record_trigger(
+            call_id, case_id, thread_id, recipient_phone,
+            provider="exotel", status="TRIGGERED",
+            consent_basis=consent_basis, triggered_by=triggered_by,
+        )
 
         return {
             "status": "TRIGGERED",
@@ -145,6 +160,41 @@ class ExotelClient:
             "provider": "exotel",
             "message": f"Outbound voice call dispatched for case {case_id}",
         }
+
+    @staticmethod
+    def _record_trigger(
+        call_id: str,
+        case_id: str,
+        thread_id: Optional[str],
+        recipient_phone: str,
+        provider: str,
+        status: str,
+        consent_basis: Optional[str],
+        triggered_by: Optional[str],
+    ) -> None:
+        """Write the call into the durable Exotel call log at trigger time."""
+        from src.voice.call_log import record_call_trigger
+
+        record_call_trigger(
+            call_id=call_id,
+            case_id=case_id,
+            thread_id=thread_id or f"thread-{case_id}",
+            recipient_phone=recipient_phone,
+            provider=provider,
+            status=status,
+            consent_basis=consent_basis,
+            triggered_by=triggered_by or "incident_workflow",
+            message=f"Outbound family call to {recipient_phone} for case {case_id}",
+        )
+
+    @staticmethod
+    def _derive_status_callback_url() -> Optional[str]:
+        """Reuse the public tunnel base of the voice callback for status events."""
+        base = (settings.VOICE_CALLBACK_URL or "").strip()
+        if not base.startswith(("http://", "https://")):
+            return None
+        root = base.rsplit("/", 1)[0]
+        return f"{root}/webhook/exotel-status"
 
     @staticmethod
     def _build_stream_url(case_id: str, thread_id: Optional[str]) -> str:

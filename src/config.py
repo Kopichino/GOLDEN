@@ -44,8 +44,12 @@ class Settings(BaseSettings):
     EXOTEL_RECORD_CALLS: bool = False
     EXOTEL_TIMEOUT_SECONDS: int = 15
     EXOTEL_APP_ID: Optional[str] = None
-    GEMINI_LIVE_MODEL: str = "gemini-2.0-flash-live-001"
+    GEMINI_LIVE_MODEL: str = "gemini-3.1-flash-live-preview"
     GEMINI_VOICE_NAME: str = "Zephyr"
+    # Realtime turn-detection tuning. Lower silence duration commits the caller
+    # turn sooner (lower latency) but risks clipping mid-sentence pauses.
+    VOICE_PREFIX_PADDING_MS: int = 100
+    VOICE_SILENCE_DURATION_MS: int = 300
     VOICE_SERVER_HOST: str = "127.0.0.1"
     VOICE_SERVER_PORT: int = 8765
     VOICE_SERVER_PATH: str = "/ws"

@@ -317,12 +317,17 @@ function setupOnSceneIdentification() {
 
       const result = await res.json();
       if (statusBanner) {
-        statusBanner.textContent = `✅ Transmitted to CAD • Family Outreach Dispatched to ${familyPhone}`;
         statusBanner.classList.remove("hidden");
+        if (result.success) {
+          statusBanner.innerHTML = `📞 ${result.message || "Family AI call dispatched"}${result.call_id ? ` <span class="font-mono" style="opacity:0.7">(${result.call_id})</span>` : ""}`;
+          btnSubmit.style.background = "linear-gradient(135deg, #10b981, #059669)";
+          const mainLbl = btnSubmit.querySelector(".btn-main-label");
+          if (mainLbl) mainLbl.textContent = "Family Voice AI Dispatched ✓";
+        } else {
+          statusBanner.innerHTML = `⚠️ ${result.message || "Family call could not be triggered"} — Control room notified`;
+          btnSubmit.style.background = "linear-gradient(135deg, #f59e0b, #d97706)";
+        }
       }
-      btnSubmit.style.background = "linear-gradient(135deg, #10b981, #059669)";
-      const mainLbl = btnSubmit.querySelector(".btn-main-label");
-      if (mainLbl) mainLbl.textContent = "Dispatched to Family & CAD ✓";
     } catch (err) {
       alert("Error submitting on-scene identification: " + err.message);
     } finally {
@@ -466,8 +471,38 @@ function initDriverSSE() {
           updateMilestoneUI(event.mission_status);
         } else if (event.stage === "DISPATCHER_OVERRIDE") {
           fetchMissionData();
+        } else if (event.event_type === "FAMILY_CALL_STATUS_UPDATE" || event.event_type === "CASE_COMPLETED") {
+          updateFamilyCallBanner(event);
         }
       }
     } catch (err) {}
   };
+}
+
+function updateFamilyCallBanner(event) {
+  const banner = document.getElementById("family-dispatch-status-banner");
+  if (!banner) return;
+
+  let status = event.call_status || null;
+  if (event.stage === "CASE_COMPLETED") status = "COMPLETED";
+  if (event.exotel_status && !status) {
+    const map = { "no-answer": "NO ANSWER", busy: "BUSY", failed: "FAILED", canceled: "FAILED" };
+    status = map[event.exotel_status] || "IN PROGRESS";
+  }
+  if (!status) return;
+
+  let icon = "📞", text = `Family AI Call: ${status}`;
+  if (status === "COMPLETED") {
+    icon = "✅";
+    text = "Family AI Call Completed • Medical history sent to hospital team";
+  } else if (status === "NO ANSWER" || status === "NO_ANSWER" || status === "FAILED" || status === "BUSY") {
+    icon = "⚠️";
+    text = `Family AI Call ${status} • Family could not be reached — notify control room`;
+  } else if (status === "IN_PROGRESS") {
+    icon = "📞";
+    text = "Family AI Call In Progress • Shreya is collecting medical history";
+  }
+
+  banner.classList.remove("hidden");
+  banner.innerHTML = `${icon} ${text}${event.call_id ? ` <span class="font-mono" style="opacity:0.7">(${event.call_id})</span>` : ""}`;
 }

@@ -344,6 +344,49 @@ class FhirToolService:
             ts = int(time.time())
             return f"sim-bundle-{ts}", f"sim-patient-{ts}", f"sim-encounter-{ts}", f"sim-condition-{ts}"
 
+    def submit_family_history_update(
+        self,
+        patient_id: Optional[str],
+        encounter_id: Optional[str],
+        allergies: List[str],
+        medications: List[str],
+        blood_group: Optional[str],
+        conditions: List[str],
+        summary: Optional[str],
+    ) -> Dict[str, Any]:
+        """Submit the voice-collected family history as FHIR resources.
+
+        Returns {"status": "SUCCESS"|"FAILED"|"SKIPPED", "resource_ids": [...]}.
+        Never raises: a FHIR outage must not block the voice webhook resume.
+        """
+        if not patient_id:
+            return {"status": "SKIPPED", "resource_ids": [], "message": "No pre-registered FHIR patient to attach history to."}
+        if not (allergies or medications or blood_group or conditions or summary):
+            return {"status": "SKIPPED", "resource_ids": [], "message": "No family-reported history to register."}
+
+        bundle = FhirBundleBuilder.create_family_history_bundle(
+            patient_id=patient_id,
+            encounter_id=encounter_id,
+            allergies=allergies,
+            medications=medications,
+            blood_group=blood_group,
+            conditions=conditions,
+            summary=summary,
+        )
+
+        try:
+            response = self.client.submit_bundle(bundle)
+            resource_ids: List[str] = []
+            for entry in response.get("entry", []):
+                location_hdr = entry.get("response", {}).get("location", "")
+                if location_hdr:
+                    resource_ids.append(location_hdr.split("/_history")[0])
+            if not resource_ids:
+                resource_ids = [f"sim-history-{int(time.time())}"]
+            return {"status": "SUCCESS", "resource_ids": resource_ids, "bundle_id": response.get("id")}
+        except Exception as exc:
+            return {"status": "FAILED", "resource_ids": [], "message": str(exc)}
+
 
 class HospitalAgent:
     """Composing Facade for Hospital Discovery, Matching, and FHIR Pre-Registration.

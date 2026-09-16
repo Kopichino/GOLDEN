@@ -175,3 +175,150 @@ class FhirBundleBuilder:
         }
 
         return bundle
+
+    @staticmethod
+    def create_family_history_bundle(
+        patient_id: str,
+        encounter_id: Optional[str] = None,
+        allergies: Optional[List[str]] = None,
+        medications: Optional[List[str]] = None,
+        blood_group: Optional[str] = None,
+        conditions: Optional[List[str]] = None,
+        summary: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Creates a FHIR R4 Transaction Bundle with the family-reported history
+        collected by the voice agent:
+        1. AllergyIntolerance (one per reported allergy)
+        2. MedicationStatement (one per reported current medication)
+        3. Observation (ABO/Rh blood group, LOINC 882-1)
+        4. Condition (one per reported pre-existing condition, family-reported)
+        """
+        patient_ref = f"Patient/{patient_id}"
+        timestamp_str = datetime.now(timezone.utc).isoformat()
+        entries: List[Dict[str, Any]] = []
+
+        def add_entry(resource: Dict[str, Any]) -> None:
+            entries.append({
+                "fullUrl": f"urn:uuid:{uuid.uuid4()}",
+                "resource": resource,
+                "request": {
+                    "method": "POST",
+                    "url": resource["resourceType"]
+                }
+            })
+
+        for allergy in (allergies or []):
+            add_entry({
+                "resourceType": "AllergyIntolerance",
+                "clinicalStatus": {
+                    "coding": [{
+                        "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical",
+                        "code": "active",
+                        "display": "Active"
+                    }]
+                },
+                "code": {"text": str(allergy)},
+                "patient": {"reference": patient_ref},
+                "recordedDate": timestamp_str,
+                "note": [{"text": "Family-reported via GOLDEN voice agent"}]
+            })
+
+        for medication in (medications or []):
+            add_entry({
+                "resourceType": "MedicationStatement",
+                "status": "active",
+                "medicationCodeableConcept": {"text": str(medication)},
+                "subject": {"reference": patient_ref},
+                "effectiveDateTime": timestamp_str,
+                "informationSource": {"display": "Family report (GOLDEN voice agent)"},
+                "note": [{"text": "Family-reported via GOLDEN voice agent"}]
+            })
+
+        if blood_group:
+            add_entry({
+                "resourceType": "Observation",
+                "status": "final",
+                "category": [{
+                    "coding": [{
+                        "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                        "code": "laboratory",
+                        "display": "Laboratory"
+                    }]
+                }],
+                "code": {
+                    "coding": [{
+                        "system": "http://loinc.org",
+                        "code": "882-1",
+                        "display": "ABO and Rh group [Type] in Blood"
+                    }],
+                    "text": "Blood group"
+                },
+                "subject": {"reference": patient_ref},
+                "effectiveDateTime": timestamp_str,
+                "valueString": str(blood_group),
+                "note": [{"text": "Family-reported via GOLDEN voice agent"}]
+            })
+
+        for condition in (conditions or []):
+            condition_resource: Dict[str, Any] = {
+                "resourceType": "Condition",
+                "clinicalStatus": {
+                    "coding": [{
+                        "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+                        "code": "active",
+                        "display": "Active"
+                    }]
+                },
+                "verificationStatus": {
+                    "coding": [{
+                        "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+                        "code": "unconfirmed",
+                        "display": "Unconfirmed"
+                    }]
+                },
+                "category": [{
+                    "coding": [{
+                        "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                        "code": "problem-list-item",
+                        "display": "Problem List Item"
+                    }]
+                }],
+                "code": {"text": str(condition)},
+                "subject": {"reference": patient_ref},
+                "recordedDate": timestamp_str,
+                "note": [{"text": "Family-reported pre-existing condition via GOLDEN voice agent"}]
+            }
+            if encounter_id:
+                condition_resource["encounter"] = {"reference": f"Encounter/{encounter_id}"}
+            add_entry(condition_resource)
+
+        if summary:
+            add_entry({
+                "resourceType": "Observation",
+                "status": "final",
+                "category": [{
+                    "coding": [{
+                        "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                        "code": "social-history",
+                        "display": "Social History"
+                    }]
+                }],
+                "code": {
+                    "coding": [{
+                        "system": "http://snomed.info/sct",
+                        "code": "417319006",
+                        "display": "History of clinical finding in subject"
+                    }],
+                    "text": "Family-reported clinical summary"
+                },
+                "subject": {"reference": patient_ref},
+                "effectiveDateTime": timestamp_str,
+                "valueString": str(summary),
+            })
+
+        return {
+            "resourceType": "Bundle",
+            "type": "transaction",
+            "entry": entries
+        }

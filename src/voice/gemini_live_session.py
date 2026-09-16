@@ -76,8 +76,13 @@ class GeminiLiveFamilySession:
             output_audio_transcription=types.AudioTranscriptionConfig(),
             realtime_input_config=types.RealtimeInputConfig(
                 automatic_activity_detection=types.AutomaticActivityDetection(
-                    prefix_padding_ms=200,
-                    silence_duration_ms=500,
+                    # High start sensitivity reacts to caller speech onset faster;
+                    # high end sensitivity plus a short silence window commits the
+                    # caller's turn sooner, which is the main turn-latency lever.
+                    start_of_speech_sensitivity=types.StartSensitivity.START_SENSITIVITY_HIGH,
+                    end_of_speech_sensitivity=types.EndSensitivity.END_SENSITIVITY_HIGH,
+                    prefix_padding_ms=settings.VOICE_PREFIX_PADDING_MS,
+                    silence_duration_ms=settings.VOICE_SILENCE_DURATION_MS,
                 ),
             ),
             speech_config=types.SpeechConfig(

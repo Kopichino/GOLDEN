@@ -32,8 +32,15 @@ class FamilyCommunicationAgent:
         recipient_phone: Optional[str],
         callback_url: Optional[str] = None,
         thread_id: Optional[str] = None,
+        consent_basis: Optional[str] = None,
+        triggered_by: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Initiate consent-gated family outreach.
+
+        `consent_basis` documents how consent to contact was established. When
+        provided (e.g. the ambulance crew identified the family member on
+        scene), the TEAM_CONSENT_PHONE_NUMBERS register is bypassed and the
+        basis is written to the call log for the TRAI TCCCPR audit trail.
 
         Returns a structured dictionary with call status, call ID, and audit details.
         """
@@ -49,7 +56,19 @@ class FamilyCommunicationAgent:
         sanitized_phone = PIISanitizer.sanitize(recipient_phone)
 
         # 1. Verify consent
-        if not self.client.verify_consent(recipient_phone):
+        if consent_basis is None and not self.client.verify_consent(recipient_phone):
+            from src.voice.call_log import record_call_trigger
+
+            record_call_trigger(
+                call_id=f"CALL-REFUSED-{case_id}",
+                case_id=case_id,
+                thread_id=thread_id,
+                recipient_phone=recipient_phone,
+                provider="blocked",
+                status="CONSENT_REFUSED",
+                triggered_by=triggered_by,
+                message="Number not in consenting register (TRAI TCCCPR 2018 guardrail)",
+            )
             return {
                 "status": "CONSENT_REFUSED",
                 "call_id": None,
@@ -64,6 +83,8 @@ class FamilyCommunicationAgent:
             case_id=case_id,
             callback_url=callback_url or settings.EXOTEL_STATUS_CALLBACK_URL,
             thread_id=thread_id,
+            consent_basis=consent_basis,
+            triggered_by=triggered_by,
         )
 
         status = result.get("status", "TRIGGERED")

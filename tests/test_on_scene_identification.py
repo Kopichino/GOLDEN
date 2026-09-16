@@ -79,8 +79,11 @@ def seeded_case_on_scene():
     active_cases[case_id] = state
     return case_id, ticket_id
 
-def test_on_scene_identification_submission_success(seeded_case_on_scene):
+def test_on_scene_identification_submission_success(seeded_case_on_scene, monkeypatch):
     case_id, ticket_id = seeded_case_on_scene
+    # Force simulated telephony so the driver trigger never reaches the real
+    # Exotel API from the test environment.
+    monkeypatch.setattr("src.config.settings.VOICE_SIMULATION_ONLY", True)
 
     payload = {
         "patient_name": "Rajesh Kumar",
@@ -98,11 +101,15 @@ def test_on_scene_identification_submission_success(seeded_case_on_scene):
     assert data["patient_name"] == "Rajesh Kumar"
     assert data["next_of_kin_phone"] == "+91 98400 55555"
     assert data["call_status"] == "TRIGGERED"
+    assert data["provider"] == "local_simulation"
+    assert data["call_id"] is not None
 
     # Verify state in memory
     updated_state = active_cases[case_id]
     assert updated_state.voice_family.next_of_kin_phone == "+91 98400 55555"
     assert updated_state.voice_family.call_status == "TRIGGERED"
+    assert updated_state.voice_family.call_triggered_by == "driver_on_scene"
+    assert "On-scene identification" in (updated_state.voice_family.consent_basis or "")
 
     # Verify audit event in mission events
     events = updated_state.ambulance_dispatch.mission_events

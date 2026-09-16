@@ -33,6 +33,7 @@ class LiveVoiceBridge:
         metadata: ExotelCallMetadata,
         gemini_session: Any,
         gemini_live_session: Any = None,
+        transcript_logger: Any = None,
     ) -> FamilyVoiceSession:
         """Relay one call until either provider closes or the call stops."""
         family_session = FamilyVoiceSession(metadata)
@@ -40,6 +41,27 @@ class LiveVoiceBridge:
         greeting_complete = asyncio.Event()
         metrics = VoiceLatencyMetrics()
         speech_threshold = 350.0
+        # Live transcript fragments from Gemini; flushed as complete turns.
+        pending_caller: list[str] = []
+        pending_agent: list[str] = []
+        transcript_messages: list[dict[str, str]] = []
+
+        def flush_transcript_turns() -> None:
+            if transcript_logger is not None:
+                for text in pending_caller:
+                    transcript_logger.add_transcript("CALLER", text)
+                for text in pending_agent:
+                    transcript_logger.add_transcript("AGENT", text)
+                completed = transcript_logger.finish_turn()
+                for role, text in completed.items():
+                    transcript_messages.append({"role": role, "text": text})
+            else:
+                for role, buffer in (("CALLER", pending_caller), ("AGENT", pending_agent)):
+                    text = " ".join(buffer).strip()
+                    if text:
+                        transcript_messages.append({"role": role, "text": text})
+            pending_caller.clear()
+            pending_agent.clear()
 
         async def exotel_to_gemini() -> None:
             from google.genai import types
@@ -81,6 +103,12 @@ class LiveVoiceBridge:
                         return
                     server_content = getattr(response, "server_content", None)
                     if server_content is not None:
+                        input_fragment = getattr(getattr(server_content, "input_transcription", None), "text", None)
+                        if input_fragment:
+                            pending_caller.append(input_fragment)
+                        output_fragment = getattr(getattr(server_content, "output_transcription", None), "text", None)
+                        if output_fragment:
+                            pending_agent.append(output_fragment)
                         if getattr(server_content, "interrupted", False):
                             await websocket.send(json.dumps({"event": "clear"}))
                             continue
@@ -105,11 +133,19 @@ class LiveVoiceBridge:
                         if getattr(server_content, "turn_complete", False):
                             saw_turn_complete = True
                             greeting_complete.set()
+                            flush_transcript_turns()
                             metrics.mark_greeting_complete()
                             metrics.log_snapshot(
                                 call_id=metadata.call_id,
                                 stage="turn_complete",
                             )
+                    tool_call = getattr(response, "tool_call", None)
+                    if tool_call and transcript_logger is not None:
+                        for function_call in getattr(tool_call, "function_calls", []) or []:
+                            transcript_logger.event("TOOL_CALL", {
+                                "name": function_call.name,
+                                "args": dict(function_call.args or {}),
+                            })
                     await live_adapter.handle_tool_response(
                         response, gemini_session, family_session
                     )
@@ -145,4 +181,10 @@ class LiveVoiceBridge:
             task.cancel()
         await asyncio.gather(*done, *pending, return_exceptions=True)
         metrics.log_snapshot(call_id=metadata.call_id, stage="bridge_end")
+        flush_transcript_turns()
+        if transcript_logger is not None:
+            transcript_logger.event("LATENCY", metrics.snapshot())
+        # Expose the call artifacts on the returned session for the completion payload.
+        family_session.transcript_messages = transcript_messages
+        family_session.latency_snapshot = metrics.snapshot()
         return family_session

@@ -92,6 +92,7 @@ async def handle_connection(websocket: Any) -> None:
     started_at = time.monotonic()
     metadata: ExotelCallMetadata | None = None
     family_session: FamilyVoiceSession | None = None
+    transcript_logger: Any = None
     call_status = "FAILED"
     try:
         request = getattr(websocket, "request", None)
@@ -107,11 +108,32 @@ async def handle_connection(websocket: Any) -> None:
         
         cleaned_stream_path = unquoted.replace("\\?", "?").replace("\\", "")
         metadata = await _read_start_event(websocket, cleaned_stream_path)
+        from src.voice.call_log import record_call_status
+        from src.voice.transcript_logger import VoiceTranscriptLogger
+
+        record_call_status(
+            metadata.call_id,
+            "IN_PROGRESS",
+            source="voice_server",
+            details="Exotel WebSocket stream answered; opening Gemini Live session",
+        )
+        transcript_logger = VoiceTranscriptLogger(metadata.case_id, metadata.call_id)
+        transcript_logger.event("CALL_START", {
+            "case_id": metadata.case_id,
+            "thread_id": metadata.thread_id,
+            "stream_sid": metadata.stream_sid,
+        })
         voice_session = GeminiLiveFamilySession(settings.GEMINI_LIVE_MODEL)
         async with voice_session.connect() as gemini_session:
             bridge = LiveVoiceBridge()
             family_session = await asyncio.wait_for(
-                bridge.run(websocket, metadata, gemini_session, voice_session),
+                bridge.run(
+                    websocket,
+                    metadata,
+                    gemini_session,
+                    voice_session,
+                    transcript_logger=transcript_logger,
+                ),
                 timeout=settings.VOICE_CALL_TIMEOUT_SECONDS,
             )
         call_status = "COMPLETED"
@@ -125,6 +147,15 @@ async def handle_connection(websocket: Any) -> None:
                 round(time.monotonic() - started_at),
             )
             payload["completed_at"] = datetime.now(timezone.utc).isoformat()
+            payload["transcript"] = getattr(session, "transcript_messages", [])
+            payload["latency"] = getattr(session, "latency_snapshot", None)
+            if transcript_logger is not None:
+                transcript_logger.event("CALL_END", {"status": call_status})
+                transcript_logger.close()
+                payload["transcript_path"] = str(transcript_logger.path)
+            from src.voice.call_log import attach_outcome
+
+            attach_outcome(metadata.call_id, payload)
             await _post_completion(payload)
 
 

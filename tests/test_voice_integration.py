@@ -20,6 +20,15 @@ from src.voice.latency_metrics import VoiceLatencyMetrics
 from src.voice.live_bridge import LiveVoiceBridge
 
 
+@pytest.fixture(autouse=True)
+def isolated_call_log(tmp_path, monkeypatch):
+    """Keep voice tests from writing entries into the real call-log store."""
+    from src.voice import call_log
+
+    monkeypatch.setattr(call_log, "CALL_LOG_FILE", tmp_path / "voice_call_logs.json")
+    yield
+
+
 def test_exotel_media_protocol_decodes_and_resamples_audio():
     pcm_8khz = b"\x01\x00" * 80
     event = {

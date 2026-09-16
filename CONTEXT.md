@@ -162,20 +162,21 @@ The voice transcript itself is not placed into the LangGraph state. It is stored
 
 ## Voice Call Flow
 
-1. The coordinator reaches the family communication node.
-2. `FamilyCommunicationAgent` verifies the destination against `TEAM_CONSENT_PHONE_NUMBERS`.
-3. `ExotelClient` either:
-   - returns a local simulated call when `VOICE_SIMULATION_ONLY=true`, or
-   - creates an Exotel call using `StreamUrl`, `StreamType=bidirectional`, and callback metadata.
-4. Exotel opens the public WebSocket and sends a `start` event.
-5. `ExotelCallMetadata.from_start_event()` extracts durable identifiers.
-6. `GeminiLiveFamilySession.connect()` opens Gemini Live and sends the internal `CALL_START` trigger.
-7. Gemini speaks the greeting and continues the family-history conversation.
-8. `LiveVoiceBridge` forwards audio in both directions until Exotel sends `stop`, disconnects, or the configured timeout is reached.
-9. Gemini function calls are handled by `FamilyVoiceSession`.
-10. On completion, the voice server posts a JSON callback to `VOICE_CALLBACK_URL`.
-11. `src/voice/webhook_receiver.py` validates the callback, checks the case/thread match, and calls `resume_from_voice_webhook()` on the coordinator.
-12. The structured voice fields are merged into `voice_family` and the workflow continues.
+1. The coordinator reaches the family communication node. It does NOT place a call; it marks the case `AWAITING_FAMILY_CONTACT` and defers outreach.
+2. The ambulance crew identifies the victim and next-of-kin on scene and submits the contact from the driver dashboard (`POST /api/driver/{ticket}/identification`).
+3. That endpoint calls `GoldenOrchestrator.trigger_family_outreach()`, which records the consent basis (on-scene identification by the crew), places the Exotel call, and persists `TRIGGERED` + `call_id` into the LangGraph checkpoint.
+4. `FamilyCommunicationAgent` asks `ExotelClient` to create an Exotel call using `StreamUrl`, `StreamType=bidirectional`, and callback metadata. The call is written to the durable call log at trigger time.
+5. Exotel opens the public WebSocket and sends a `start` event.
+6. `ExotelCallMetadata.from_start_event()` extracts durable identifiers.
+7. `GeminiLiveFamilySession.connect()` opens Gemini Live and sends the internal `CALL_START` trigger.
+8. Gemini speaks the greeting and continues the family-history conversation.
+9. `LiveVoiceBridge` forwards audio in both directions until Exotel sends `stop`, disconnects, or the configured timeout is reached. Caller and agent turns are captured live into the per-call transcript.
+10. Gemini function calls are handled by `FamilyVoiceSession`.
+11. On completion, the voice server posts a JSON callback to `VOICE_CALLBACK_URL` with the collected disclosures, transcript, and latency metrics.
+12. `POST /webhook/call-outcome` on the dashboard validates the callback, checks the case/thread match, registers the family history in FHIR, and calls `resume_from_voice_webhook()` on the coordinator.
+13. The structured voice fields are merged into `voice_family` and the workflow continues.
+
+If Exotel reports a terminal failure status (no-answer, busy, failed) on `POST /webhook/exotel-status`, the workflow is finalized with that status, because an unanswered call never opens the voice WebSocket.
 
 ## Gemini Family Agent
 
@@ -223,10 +224,26 @@ The current policy is intentionally not automatic language detection:
 
 `GeminiLiveFamilySession` enables input/output transcription and configures automatic activity detection with:
 
-- `prefix_padding_ms=200`
-- `silence_duration_ms=500`
+- `start_of_speech_sensitivity=START_SENSITIVITY_HIGH`
+- `end_of_speech_sensitivity=END_SENSITIVITY_HIGH`
+- `prefix_padding_ms` (default 100, `VOICE_PREFIX_PADDING_MS`)
+- `silence_duration_ms` (default 300, `VOICE_SILENCE_DURATION_MS`)
 
 The silence setting controls how long Gemini waits after speech before committing the caller turn. Lower values reduce latency but can cut off callers who pause between words.
+
+The realtime model is `gemini-3.1-flash-live-preview` by default. Measure before changing: connect with `GeminiLiveFamilySession` and check time-to-first-audio.
+
+## Call Logging
+
+Every family call is recorded across its lifecycle in `logs/voice_call_logs.json`
+via `src/voice/call_log.py`:
+
+- At trigger time (both Exotel and simulated calls): case, thread, recipient, provider, consent basis, who triggered.
+- On stream start: `IN_PROGRESS`.
+- Exotel status callbacks (`POST /webhook/exotel-status`): provider status events, duration, recording URL. The status callback URL is derived from `VOICE_CALLBACK_URL` when `EXOTEL_STATUS_CALLBACK_URL` is not set.
+- At call end: the full outcome payload including collected disclosures, status history, and latency metrics.
+
+The dispatcher dashboard reads `call_logs` from `GET /api/cases/{case_id}` and renders them in the "Voice AI Call Log" section of the case details. `GET /api/calls` lists recent calls across all cases.
 
 ### Voice Latency Metrics
 
@@ -288,7 +305,7 @@ The dashboard callback validates:
 
 Then `FamilyCommunicationAgent.process_webhook_disclosure()` sanitizes text with `PIISanitizer`, normalizes the blood group, creates `VoiceFamilyOutput`, and the coordinator resumes the checkpoint.
 
-The dashboard reads the resulting state through `/api/cases/{case_id}`. The transcript file remains local and is not automatically uploaded to the dashboard or FHIR.
+The dashboard reads the resulting state through `/api/cases/{case_id}`. On resume the coordinator also submits the family-reported history to HAPI FHIR as AllergyIntolerance, MedicationStatement, Observation (blood group and summary), and Condition resources attached to the pre-registered Patient/Encounter; the result is stored in `voice_family.fhir_update_status` / `fhir_update_resource_ids`. The transcript file remains local, but its turn texts travel inside the callback payload and are displayed in the dashboard call log.
 
 ## Environment Variables
 
@@ -309,12 +326,14 @@ EXOTEL_API_TOKEN=<secret>
 EXOTEL_SUBDOMAIN=<Exotel host>
 EXOTEL_CALLER_ID=<caller ID>
 EXOTEL_STREAM_URL=<public WSS URL ending in /ws>
-EXOTEL_STATUS_CALLBACK_URL=<optional Exotel status callback>
-TEAM_CONSENT_PHONE_NUMBERS=<comma-separated allowed numbers>
+EXOTEL_STATUS_CALLBACK_URL=<optional; derived from VOICE_CALLBACK_URL when empty>
+TEAM_CONSENT_PHONE_NUMBERS=<comma-separated allowed numbers for workflow-initiated calls; driver-initiated calls record an on-scene consent basis instead>
 VOICE_SERVER_HOST=127.0.0.1
 VOICE_SERVER_PORT=8765
 VOICE_SERVER_PATH=/ws
 VOICE_CALL_TIMEOUT_SECONDS=300
+VOICE_PREFIX_PADDING_MS=100
+VOICE_SILENCE_DURATION_MS=300
 ```
 
 If `.env` contains an exposed API key, rotate it immediately and replace it with a new key.

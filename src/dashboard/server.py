@@ -22,6 +22,7 @@ import requests
 import qrcode
 from qrcode.image.svg import SvgPathImage
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -161,7 +162,102 @@ async def receive_voice_call_outcome(
     )
     if not valid:
         raise HTTPException(status_code=401, detail=reason)
-    return handle_call_outcome(payload, coordinator)
+    # The resume path performs the FHIR family-history update; keep it off the
+    # event loop so slow FHIR responses never block SSE or other endpoints.
+    return await run_in_threadpool(handle_call_outcome, payload, coordinator)
+
+EXOTEL_FAILURE_STATUS_MAP = {
+    "no-answer": "NO_ANSWER",
+    "no_answer": "NO_ANSWER",
+    "busy": "FAILED",
+    "failed": "FAILED",
+    "canceled": "FAILED",
+    "cancelled": "FAILED",
+}
+
+@app.post("/webhook/exotel-status")
+async def receive_exotel_call_status(request: Request):
+    """Receive Exotel telephony status callbacks (CallSid lifecycle).
+
+    Exotel posts either form-encoded or JSON fields such as CallSid, Status,
+    Duration and RecordingUrl when a call progresses or terminates. Every
+    event is written to the durable call log; terminal failures finalize the
+    case immediately (an unanswered call never opens the voice WebSocket, so
+    no call-outcome webhook would ever arrive for it).
+    """
+    call_id = None
+    fields: Dict[str, Any] = {}
+    content_type = (request.headers.get("content-type") or "").lower()
+    try:
+        raw_body = await request.body()
+        if "application/json" in content_type:
+            fields = json.loads(raw_body.decode("utf-8"))
+        else:
+            # Exotel posts x-www-form-urlencoded status callbacks; parse without
+            # requiring the python-multipart dependency.
+            from urllib.parse import parse_qs
+            parsed = parse_qs(raw_body.decode("utf-8", "ignore"), keep_blank_values=True)
+            fields = {key: values[0] for key, values in parsed.items() if values}
+    except Exception:
+        fields = {}
+
+    call_id = str(
+        fields.get("CallSid")
+        or fields.get("callSid")
+        or fields.get("callsid")
+        or fields.get("call_id")
+        or ""
+    )
+    exotel_status = str(
+        fields.get("Status") or fields.get("CallStatus") or fields.get("status") or ""
+    ).lower()
+
+    if not call_id:
+        # Exotel also posts dial-status callbacks for the child leg; log and ignore.
+        return {"status": "IGNORED", "reason": "missing CallSid"}
+
+    from src.voice import call_log
+
+    # Resolve the case when the CallSid is already known from the trigger log.
+    entry = call_log.find_call_by_id(call_id)
+    case_id = (entry or {}).get("case_id")
+
+    call_log.attach_exotel_status(call_id, fields)
+
+    golden_status = EXOTEL_FAILURE_STATUS_MAP.get(exotel_status)
+    if golden_status and case_id and case_id in active_cases:
+        state = active_cases[case_id]
+        thread_id = state.control_audit.thread_id
+        resumed = coordinator.resume_from_voice_webhook(
+            thread_id=thread_id,
+            call_id=call_id,
+            call_status=golden_status,
+            consent_granted=False,
+        )
+        if resumed:
+            checkpoint = coordinator.app.get_state({"configurable": {"thread_id": thread_id}})
+            if checkpoint and checkpoint.values:
+                active_cases[case_id] = GoldenCaseState.model_validate(checkpoint.values)
+        call_log.record_call_status(call_id, golden_status, source="exotel_status_callback")
+    elif exotel_status in {"in-progress", "in_progress", "ringing"}:
+        call_log.record_call_status(call_id, "IN_PROGRESS", source="exotel_status_callback")
+
+    broadcast_event({
+        "event_type": "FAMILY_CALL_STATUS_UPDATE",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "case_id": case_id,
+        "call_id": call_id,
+        "exotel_status": exotel_status,
+        "call_status": golden_status or ("IN_PROGRESS" if exotel_status in {"in-progress", "in_progress", "ringing"} else None),
+    })
+
+    return {"status": "LOGGED", "call_id": call_id, "exotel_status": exotel_status}
+
+@app.get("/api/calls")
+def list_call_logs(limit: int = 50):
+    """Recent voice-call log entries across all cases (Exotel audit view)."""
+    from src.voice import call_log
+    return {"calls": call_log.get_calls(limit=limit), "total": len(call_log.get_calls(limit=500))}
 
 @app.get("/api/events")
 async def sse_events(request: Request):
@@ -268,7 +364,10 @@ def get_case(case_id: str):
     if case_id not in active_cases:
         raise HTTPException(status_code=404, detail="Case not found")
     state = active_cases[case_id]
-    return json.loads(state.model_dump_json())
+    payload = json.loads(state.model_dump_json())
+    from src.voice import call_log
+    payload["call_logs"] = call_log.get_calls(case_id=case_id, limit=20)
+    return payload
 
 @app.get("/api/presets")
 def get_presets():
@@ -861,7 +960,12 @@ def update_driver_mission_status(ticket_or_case_id: str, req: DriverStatusUpdate
 
 @app.post("/api/driver/{ticket_or_case_id}/identification")
 def submit_on_scene_identification(ticket_or_case_id: str, req: OnSceneIdentificationRequest):
-    """Receive victim identification and next-of-kin contact discovered on scene by paramedics."""
+    """Receive victim identification from the crew and trigger the family AI voice call.
+
+    This is the ONLY place family outreach is initiated: the ambulance crew
+    identifies the victim on scene and dispatches the Exotel/Gemini voice agent
+    to the next-of-kin number from this dashboard action.
+    """
     case_id, state = _find_case_by_ticket_or_id(ticket_or_case_id)
     if not state:
         raise HTTPException(status_code=404, detail="Ambulance mission not found")
@@ -871,13 +975,15 @@ def submit_on_scene_identification(ticket_or_case_id: str, req: OnSceneIdentific
         raise HTTPException(status_code=400, detail="Invalid next-of-kin phone number. Must be at least 8 digits.")
 
     now_iso = datetime.now(timezone.utc).isoformat()
+    consent_basis = f"On-scene identification by ambulance crew via {req.id_source} ({req.relationship} of victim '{req.patient_name}')"
 
-    # Bind discovered family contact and victim identity to state
+    # Bind discovered family contact and victim identity to in-memory state
     state.voice_family.next_of_kin_phone = clean_phone
     state.voice_family.recipient_phone = clean_phone
     state.voice_family.recipient_relationship = req.relationship
-    state.voice_family.call_status = "TRIGGERED"
-    
+    state.voice_family.call_triggered_by = "driver_on_scene"
+    state.voice_family.consent_basis = consent_basis
+
     event_desc = f"On-Scene ID: '{req.patient_name}' via {req.id_source}. Family phone: {clean_phone} ({req.relationship})."
     if state.ambulance_dispatch:
         state.ambulance_dispatch.mission_events.append({
@@ -885,6 +991,31 @@ def submit_on_scene_identification(ticket_or_case_id: str, req: OnSceneIdentific
             "timestamp": now_iso,
             "notes": event_desc
         })
+
+    # Place the real Exotel/Gemini family call and persist it into the checkpoint
+    try:
+        outreach = coordinator.trigger_family_outreach(
+            case_id=case_id,
+            recipient_phone=clean_phone,
+            thread_id=state.control_audit.thread_id,
+            relationship=req.relationship,
+            consent_basis=consent_basis,
+            triggered_by="driver_on_scene",
+            fallback_state=state,
+        )
+    except Exception as exc:
+        outreach = {
+            "success": False,
+            "status": "FAILED",
+            "call_id": None,
+            "provider": None,
+            "message": f"Family call trigger error: {exc}",
+        }
+
+    call_status = outreach.get("status", "FAILED")
+    state.voice_family.call_status = call_status
+    if outreach.get("call_id"):
+        state.voice_family.call_id = outreach.get("call_id")
 
     # Broadcast event via SSE to central CAD dashboard
     broadcast_event({
@@ -896,18 +1027,28 @@ def submit_on_scene_identification(ticket_or_case_id: str, req: OnSceneIdentific
         "id_source": req.id_source,
         "relationship": req.relationship,
         "next_of_kin_phone": clean_phone,
-        "call_status": "TRIGGERED",
+        "call_id": outreach.get("call_id"),
+        "call_status": call_status,
         "notes": req.clinical_notes or event_desc
     })
 
+    if outreach.get("success"):
+        driver_message = f"Family AI voice call {call_status.lower()} to {clean_phone}"
+        if outreach.get("provider"):
+            driver_message += f" ({outreach['provider']})"
+    else:
+        driver_message = outreach.get("message") or f"Family call failed ({call_status}). Control room notified."
+
     return {
-        "success": True,
+        "success": bool(outreach.get("success")),
         "case_id": case_id,
         "patient_name": req.patient_name,
         "id_source": req.id_source,
         "next_of_kin_phone": clean_phone,
-        "call_status": "TRIGGERED",
-        "message": f"Family outreach triggered to {clean_phone} for {req.patient_name}"
+        "call_id": outreach.get("call_id"),
+        "call_status": call_status,
+        "provider": outreach.get("provider"),
+        "message": driver_message
     }
 
 @app.get("/api/audit/export")

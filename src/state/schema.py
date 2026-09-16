@@ -120,6 +120,10 @@ class VoiceFamilyOutput(BaseModel):
     call_summary: Optional[str] = Field(default=None)
     call_duration_seconds: Optional[int] = Field(default=None, ge=0)
     resumed_at: Optional[datetime] = None
+    call_triggered_by: Optional[str] = Field(default=None, description="Who placed the call: driver_on_scene or incident_workflow")
+    consent_basis: Optional[str] = Field(default=None, description="How consent to call was established (TRAI TCCCPR audit)")
+    fhir_update_status: Optional[Literal["PENDING", "SUCCESS", "FAILED", "SKIPPED"]] = Field(default=None, description="Post-call family history FHIR update status")
+    fhir_update_resource_ids: List[str] = Field(default_factory=list, description="FHIR resource IDs created from the call disclosures")
 
 # =====================================================================
 # SECTION 4B: Ambulance Fleet & Physical Dispatch (108 CAD)
@@ -195,6 +199,7 @@ class ControlAudit(BaseModel):
         "AMBULANCE_ALLOCATION",
         "FHIR_REGISTRATION",
         "VOICE_DISPATCH",
+        "AWAITING_FAMILY_CONTACT",
         "AWAITING_WEBHOOK",
         "CONSOLIDATION",
         "DISPATCHER_REVIEW",

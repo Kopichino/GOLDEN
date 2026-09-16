@@ -43,7 +43,7 @@ def test_coordinator_hard_sos_bypass_flow():
     else:
         assert final_state.voice_family.call_id is None
 
-def test_coordinator_parallel_fanout_and_webhook_resumption():
+def test_coordinator_parallel_fanout_and_webhook_resumption(monkeypatch):
     coordinator = GoldenCoordinator()
     thread_id = "test-thread-fanout-002"
     state = GoldenCaseState(
@@ -70,13 +70,35 @@ def test_coordinator_parallel_fanout_and_webhook_resumption():
     assert dispatched_state.triage.acuity_level in ["GREEN", "YELLOW"]
     assert dispatched_state.hospital_fhir.fhir_submission_status == "SUCCESS"
 
-    # 2. State paused awaiting webhook
-    assert dispatched_state.control_audit.execution_stage == "AWAITING_WEBHOOK"
+    # 2. Family call is deferred: no call yet, workflow waits for the
+    #    ambulance crew to trigger outreach from the driver dashboard.
+    assert dispatched_state.control_audit.execution_stage == "AWAITING_FAMILY_CONTACT"
+    assert dispatched_state.voice_family.call_status == "IDLE"
+    assert dispatched_state.voice_family.call_id is None
 
-    # 3. Webhook arrives with next-of-kin information
+    # 3. Driver dashboard triggers the family voice call on scene
+    monkeypatch.setattr("src.config.settings.VOICE_SIMULATION_ONLY", True)
+    triggered = coordinator.trigger_family_outreach(
+        case_id=dispatched_state.input_data.case_id,
+        recipient_phone="+919840223344",
+        thread_id=thread_id,
+        relationship="Spouse",
+        consent_basis="On-scene identification by ambulance crew",
+        triggered_by="driver_on_scene",
+    )
+    assert triggered["success"] is True
+    assert triggered["status"] == "TRIGGERED"
+    assert triggered["call_id"] is not None
+    checkpoint_mid = coordinator.app.get_state({"configurable": {"thread_id": thread_id}})
+    mid_state = GoldenCaseState.model_validate(checkpoint_mid.values)
+    assert mid_state.voice_family.call_status == "TRIGGERED"
+    assert mid_state.voice_family.call_triggered_by == "driver_on_scene"
+    assert mid_state.control_audit.execution_stage == "AWAITING_WEBHOOK"
+
+    # 4. Webhook arrives with next-of-kin information
     resumed = coordinator.resume_from_voice_webhook(
         thread_id=thread_id,
-        call_id=dispatched_state.voice_family.call_id or "CALL-SIM-001",
+        call_id=triggered["call_id"],
         call_status="COMPLETED",
         allergies=["Penicillin", "Peanuts"],
         medications=["Metformin 500mg"],
@@ -86,10 +108,14 @@ def test_coordinator_parallel_fanout_and_webhook_resumption():
     )
     assert resumed is True
 
-    # 4. Check resumed state in checkpointer
+    # 5. Check resumed state in checkpointer
     checkpoint = coordinator.app.get_state({"configurable": {"thread_id": thread_id}})
     resumed_state = GoldenCaseState.model_validate(checkpoint.values)
     assert resumed_state.control_audit.execution_stage == "COMPLETED"
     assert "Penicillin" in resumed_state.voice_family.allergies
     assert resumed_state.voice_family.blood_group == "O+"
     assert resumed_state.voice_family.call_duration_seconds == 75
+    # Attribution recorded at driver-trigger time survives the webhook merge
+    assert resumed_state.voice_family.call_triggered_by == "driver_on_scene"
+    # Family history is pushed to FHIR (or failed gracefully when HAPI is down)
+    assert resumed_state.voice_family.fhir_update_status in ["SUCCESS", "FAILED"]

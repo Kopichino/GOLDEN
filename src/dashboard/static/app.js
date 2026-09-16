@@ -578,16 +578,27 @@ function renderCaseDetails(state) {
   }
 
   let callStatusText = voice.call_status || "AWAITING ON-SCENE ID";
-  if (callStatusText === "IDLE" && !nokPhone) {
+  if ((callStatusText === "IDLE" && !nokPhone) || callStatusText === "IDLE") {
     callStatusText = "AWAITING ON-SCENE ID";
   } else if (callStatusText === "TRIGGERED") {
     callStatusText = "CALLING FAMILY (AI VOICE)";
+  } else if (callStatusText === "IN_PROGRESS") {
+    callStatusText = "AI CALL IN PROGRESS";
+  } else if (callStatusText === "NO_ANSWER") {
+    callStatusText = "NO ANSWER — RETRY NEEDED";
+  } else if (callStatusText === "CONSENT_REFUSED") {
+    callStatusText = "CONSENT REFUSED";
+  } else if (callStatusText === "FAILED") {
+    callStatusText = "CALL FAILED";
   }
 
   voiceCallStatus.textContent = callStatusText;
+  const goodStatuses = ["COMPLETED"];
+  const warnStatuses = ["TRIGGERED", "IN_PROGRESS"];
   voiceCallStatus.className = `badge ${
-    voice.call_status === 'COMPLETED' ? 'badge-acuity-GREEN' : 
-    voice.call_status === 'TRIGGERED' ? 'badge-acuity-YELLOW' : 'badge-case'
+    goodStatuses.includes(voice.call_status) ? 'badge-acuity-GREEN' :
+    warnStatuses.includes(voice.call_status) ? 'badge-acuity-YELLOW' :
+    ["FAILED", "NO_ANSWER", "CONSENT_REFUSED"].includes(voice.call_status) ? 'badge-acuity-RED' : 'badge-case'
   }`;
 
   // Medical Tags
@@ -619,6 +630,9 @@ function renderCaseDetails(state) {
 
   // Enable simulate webhook button if call triggered or awaiting webhook
   btnSimulateWebhook.disabled = !(voice.call_status === "TRIGGERED" || audit.execution_stage === "AWAITING_WEBHOOK" || Boolean(nokPhone));
+
+  // Voice AI Call Log (Exotel lifecycle, transcript, FHIR update)
+  renderCallLogs(state.call_logs || [], voice);
 
   // Card 5: Ambulance Fleet Dispatch (108 CAD)
   const amb = state.ambulance_dispatch || {};
@@ -2284,6 +2298,91 @@ function handleFamilyContactDiscovered(event) {
   if (selectedCaseId) {
     fetchCaseDetails(selectedCaseId, false);
   }
+}
+
+function renderCallLogs(callLogs, voice) {
+  const section = document.getElementById("call-log-section");
+  const container = document.getElementById("call-log-container");
+  const fhirBadge = document.getElementById("call-log-fhir-status");
+  if (!section || !container) return;
+
+  if (fhirBadge) {
+    const fhirStatus = voice && voice.fhir_update_status;
+    if (fhirStatus === "SUCCESS") {
+      fhirBadge.textContent = "FHIR UPDATED";
+      fhirBadge.className = "badge badge-acuity-GREEN";
+      fhirBadge.title = (voice.fhir_update_resource_ids || []).join(", ") || "Family history registered in FHIR";
+    } else if (fhirStatus === "FAILED") {
+      fhirBadge.textContent = "FHIR UPDATE FAILED";
+      fhirBadge.className = "badge badge-acuity-RED";
+    } else if (fhirStatus === "SKIPPED") {
+      fhirBadge.textContent = "FHIR SKIPPED";
+      fhirBadge.className = "badge";
+    } else {
+      fhirBadge.textContent = "";
+    }
+  }
+
+  container.innerHTML = "";
+  if (!callLogs || callLogs.length === 0) {
+    section.style.display = "none";
+    return;
+  }
+  section.style.display = "block";
+
+  callLogs.forEach((call) => {
+    const item = document.createElement("div");
+    item.className = "call-log-item";
+
+    const statusClass = {
+      COMPLETED: "status-completed",
+      IN_PROGRESS: "status-active",
+      TRIGGERED: "status-active",
+      FAILED: "status-failed",
+      NO_ANSWER: "status-failed",
+      CONSENT_REFUSED: "status-failed"
+    }[call.status] || "status-active";
+
+    const triggeredAt = call.triggered_at ? new Date(call.triggered_at).toLocaleTimeString() : "--";
+    const duration = call.call_duration_seconds != null
+      ? `${call.call_duration_seconds}s`
+      : (call.exotel_duration_seconds ? `${call.exotel_duration_seconds}s (Exotel)` : "—");
+
+    const consentTag = call.consent_basis
+      ? `<div class="call-log-meta"><span class="call-log-label">Consent:</span> ${call.consent_basis}</div>`
+      : "";
+
+    const statusEvents = (call.status_history || [])
+      .slice(-4)
+      .map((s) => {
+        const at = s.at ? new Date(s.at).toLocaleTimeString() : "";
+        return `<div class="call-log-event">• ${s.status} <span class="call-log-time">${at} (${s.source})</span></div>`;
+      })
+      .join("");
+
+    const transcript = (call.outcome && Array.isArray(call.outcome.transcript) ? call.outcome.transcript : [])
+      .slice(0, 6)
+      .map((t) => `<div class="call-log-turn ${t.role === "AGENT" ? "turn-agent" : "turn-caller"}">${t.role === "AGENT" ? "Shreya" : "Family"}: ${t.text}</div>`)
+      .join("");
+
+    const summary = call.outcome && call.outcome.call_summary
+      ? `<div class="call-log-meta"><span class="call-log-label">Summary:</span> ${call.outcome.call_summary}</div>`
+      : "";
+
+    item.innerHTML = `
+      <div class="call-log-head">
+        <span class="badge ${statusClass}">${call.status || "UNKNOWN"}</span>
+        <span class="font-mono call-log-id">${call.call_id}</span>
+        <span class="call-log-provider">${call.provider || ""} • ${triggeredAt} • ${duration}</span>
+      </div>
+      <div class="call-log-meta"><span class="call-log-label">Called:</span> ${call.recipient_phone || "--"}</div>
+      ${consentTag}
+      ${statusEvents}
+      ${summary}
+      ${transcript ? `<div class="call-log-transcript">${transcript}</div>` : ""}
+    `;
+    container.appendChild(item);
+  });
 }
 
 
