@@ -678,6 +678,13 @@ class GoldenOrchestrator:
         # Carry forward the outreach attribution recorded when the driver triggered the call.
         disclosure.call_triggered_by = previous_voice.call_triggered_by
         disclosure.consent_basis = previous_voice.consent_basis
+        # The crew's on-scene findings exist only in this block, so rebuilding it on
+        # resume must not drop who was called or in what relationship to the patient.
+        disclosure.next_of_kin_phone = disclosure.next_of_kin_phone or previous_voice.next_of_kin_phone
+        disclosure.recipient_phone = disclosure.recipient_phone or previous_voice.recipient_phone
+        disclosure.recipient_relationship = (
+            disclosure.recipient_relationship or previous_voice.recipient_relationship
+        )
 
         # Register the collected family history in FHIR against the
         # pre-registered patient so the hospital sees the voice results.

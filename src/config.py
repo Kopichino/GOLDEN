@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     VOICE_CALL_TIMEOUT_SECONDS: int = 300
     N8N_CALL_RESULT_WEBHOOK_URL: Optional[str] = None
     TEAM_CONSENT_PHONE_NUMBERS: str = ""
+    # Trial Exotel accounts may only dial numbers verified on the account, so demo
+    # outreach is pinned to that one number. Empty means dial the real next-of-kin.
+    VOICE_TEST_RECIPIENT_PHONE: Optional[str] = None
 
     @field_validator("VOICE_CALLBACK_URL")
     @classmethod

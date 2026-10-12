@@ -120,6 +120,62 @@ def test_gemini_array_tools_declare_string_items():
             assert value_schema.items.type == "STRING"
 
 
+def test_family_outreach_pins_recipient_for_trial_accounts(monkeypatch):
+    from src.voice.family_communication import FamilyCommunicationAgent
+
+    monkeypatch.setattr(
+        "src.voice.family_communication.settings.VOICE_TEST_RECIPIENT_PHONE", "+919566017658"
+    )
+    captured = {}
+
+    class FakeExotel:
+        def trigger_outbound_call(self, **kwargs):
+            captured.update(kwargs)
+            return {"status": "TRIGGERED", "call_id": "call-1", "provider": "exotel", "message": "ok"}
+
+    result = FamilyCommunicationAgent(exotel_client=FakeExotel()).execute_outreach(
+        case_id="case-1",
+        recipient_phone="+919999900000",
+        consent_basis="Crew identified the family member on scene",
+    )
+
+    assert captured["recipient_phone"] == "+919566017658"
+    # The audit trail keeps the relative the crew actually found, not the trial leg.
+    assert result["recipient_phone"] == "+919999900000"
+
+
+def test_trial_pin_never_dials_in_place_of_consent(monkeypatch):
+    """Substituting the leg must not turn an unregistered number into a call.
+
+    The pin exists because Exotel trial accounts can only dial verified numbers; if
+    it were applied before the consent check, every refused number would silently
+    become a call to the developer's own phone.
+    """
+    from src.voice.family_communication import FamilyCommunicationAgent
+
+    monkeypatch.setattr(
+        "src.voice.family_communication.settings.VOICE_TEST_RECIPIENT_PHONE", "+919566017658"
+    )
+    monkeypatch.setattr("src.voice.call_log.record_call_trigger", lambda **kwargs: None)
+    dialled = []
+
+    class FakeExotel:
+        def verify_consent(self, phone):
+            return False
+
+        def trigger_outbound_call(self, **kwargs):
+            dialled.append(kwargs["recipient_phone"])
+            return {"status": "TRIGGERED", "call_id": "call-1"}
+
+    result = FamilyCommunicationAgent(exotel_client=FakeExotel()).execute_outreach(
+        case_id="case-1",
+        recipient_phone="+910000000000",
+    )
+
+    assert result["status"] == "CONSENT_REFUSED"
+    assert dialled == []
+
+
 def test_callback_security_authenticates_once_and_rejects_replay():
     security = CallbackSecurity("test-secret", max_age_seconds=300)
     body = b'{"case_id":"case-1"}'
@@ -272,3 +328,260 @@ def test_latency_metrics_report_required_voice_segments():
     assert snapshot["gemini_processing_to_audio_ms"] is not None
     assert snapshot["gemini_audio_to_exotel_ms"] is not None
     assert snapshot["caller_audio_to_exotel_ms"] is not None
+
+
+def test_live_bridge_hangs_up_after_the_closing_line(monkeypatch):
+    """`end_call` must release the caller, but only once the audio has drained.
+
+    Exotel Stream has no REST terminate: the leg drops when we close the
+    WebSocket, so that close is the hang-up. Doing it the moment the tool arrives
+    would clip the closing sentence, so the drain watches outbound audio first.
+    """
+    from src.voice import live_bridge
+
+    monkeypatch.setattr(live_bridge, "END_CALL_DRAIN_SECONDS", 0.05)
+
+    class EndCallAdapter:
+        async def handle_tool_response(self, response, gemini_session, family_session):
+            for call in getattr(getattr(response, "tool_call", None), "function_calls", []) or []:
+                family_session.handle_tool_call(call.name, dict(call.args or {}))
+
+    websocket = _RecordingSocket()  # stays open: only the bridge can end this call
+    gemini = _MutedGemini([
+        type("Response", (), {
+            "server_content": _server_content(turn_complete=True, audio=True),
+            "tool_call": None,
+        })(),
+        type("Response", (), {
+            "server_content": None,
+            "tool_call": type("Calls", (), {"function_calls": [
+                type("Call", (), {"name": "end_call", "id": "fc-1", "args": {}})(),
+            ]})(),
+        })(),
+    ])
+
+    session = asyncio.run(LiveVoiceBridge().run(
+        websocket,
+        ExotelCallMetadata("case-1", "thread-1", "call-1"),
+        gemini,
+        gemini_live_session=EndCallAdapter(),
+    ))
+
+    assert websocket.closed is True
+    assert session.end_call_requested is True
+    assert session.latency_snapshot["audio_frames_sent_to_exotel"] >= 1
+
+
+def test_end_call_is_not_gated_on_consent():
+    """A caller who refuses consent still has to be released from the leg."""
+    from src.voice.family_voice_session import FamilyDisclosureAccumulator
+
+    disclosures = FamilyDisclosureAccumulator()
+    assert disclosures.apply_tool_call("end_call", {}) == {"status": "accepted"}
+    assert disclosures.end_call_requested is True
+    # …while the disclosure fields stay locked behind consent.
+    assert disclosures.apply_tool_call("record_allergies", {"value": ["Penicillin"]})["status"] == "rejected"
+
+
+def test_end_call_is_declared_for_the_live_session():
+    from src.voice.gemini_live_session import GeminiLiveFamilySession
+
+    declarations = GeminiLiveFamilySession.build_tools()[0].function_declarations
+    end_call = next(item for item in declarations if item.name == "end_call")
+    assert end_call.parameters.properties == {}
+
+
+def _loud_frame(samples: int = 400) -> bytes:
+    # Constant 512 LSB amplitude: RMS well above the bridge's speech threshold.
+    return (512).to_bytes(2, "little") * samples
+
+
+def _media_message(payload: bytes) -> str:
+    return json.dumps({"event": "media", "media": {"payload": base64.b64encode(payload).decode()}})
+
+
+def _server_content(*, interrupted=False, turn_complete=False, audio=False, caller_text=None):
+    return type("Content", (), {
+        "turn_complete": turn_complete,
+        "interrupted": interrupted,
+        "input_transcription": type("T", (), {"text": caller_text})() if caller_text else None,
+        "output_transcription": None,
+        "model_turn": type("Turn", (), {"parts": [type("Part", (), {
+            "inline_data": type("Audio", (), {"data": b"\x00\x00" * 1600})()})()]})() if audio else None,
+    })()
+
+
+class _RecordingSocket:
+    """Exotel leg: replays given messages, records everything the bridge sends."""
+
+    def __init__(self, messages=(), stop_after=None):
+        self.messages = list(messages)
+        self.sent = []
+        self.stop_after = stop_after
+        self.closed = False
+
+    def __aiter__(self):
+        async def drive():
+            for message in self.messages:
+                yield message
+            if self.stop_after is None:
+                await asyncio.Event().wait()
+            else:
+                await self.stop_after.wait()
+            yield json.dumps({"event": "stop"})
+        return drive()
+
+    async def send(self, message):
+        self.sent.append(json.loads(message))
+
+    async def close(self):
+        self.closed = True
+
+
+class _MutedGemini:
+    """Gemini leg: replays given responses, then stays open like a live session."""
+
+    def __init__(self, responses=(), delivered=None):
+        self.responses = list(responses)
+        self.delivered = delivered
+        self.received = []
+
+    async def send_realtime_input(self, audio):
+        self.received.append(audio.data)
+
+    async def receive(self):
+        for response in self.responses:
+            yield response
+        if self.delivered is not None:
+            self.delivered.set()
+        await asyncio.Event().wait()
+
+
+def test_live_bridge_skips_malformed_frames_without_dropping_the_call():
+    websocket = _RecordingSocket([
+        json.dumps({"event": "media", "media": {"payload": "not!base64"}}),
+        _media_message(_loud_frame()),
+        json.dumps({"event": "stop"}),
+    ])
+    gemini = _MutedGemini()
+
+    session = asyncio.run(LiveVoiceBridge().run(
+        websocket, ExotelCallMetadata("case-1", "thread-1", "call-1"), gemini
+    ))
+
+    assert session.metadata.call_id == "call-1"
+    assert len(gemini.received) == 1
+    assert len(gemini.received[0]) == len(_loud_frame()) * 2
+
+
+def test_live_bridge_reports_inbound_audio_level_for_quiet_callers():
+    """Peak inbound level separates a silent telephony leg from a quiet caller.
+
+    Both look identical in the counters ("no speech frames") but need opposite
+    fixes, so the bridge has to report the level it actually received.
+    """
+    quiet = (200).to_bytes(2, "little") * 400  # below the 350 speech gate
+    websocket = _RecordingSocket([
+        _media_message(quiet),
+        _media_message(quiet),
+        _media_message(_loud_frame()),
+        json.dumps({"event": "stop"}),
+    ])
+    gemini = _MutedGemini()
+
+    session = asyncio.run(LiveVoiceBridge().run(
+        websocket, ExotelCallMetadata("case-1", "thread-1", "call-1"), gemini
+    ))
+
+    snapshot = session.latency_snapshot
+    assert snapshot["inbound_rms_peak"] == 512.0
+    assert snapshot["transport"]["inbound_rms"]["count"] == 3
+    assert snapshot["speech_frames_received"] == 1
+
+
+def test_live_bridge_clears_queued_exotel_audio_on_barge_in():
+    delivered = asyncio.Event()
+    websocket = _RecordingSocket(stop_after=delivered)
+    gemini = _MutedGemini([
+        type("Response", (), {"server_content": _server_content(interrupted=True), "tool_call": None})(),
+        type("Response", (), {"server_content": _server_content(turn_complete=True), "tool_call": None})(),
+    ], delivered=delivered)
+
+    asyncio.run(LiveVoiceBridge().run(
+        websocket,
+        ExotelCallMetadata("case-1", "thread-1", "call-1", stream_sid="stream-1"),
+        gemini,
+    ))
+
+    clears = [message for message in websocket.sent if message["event"] == "clear"]
+    assert clears == [{"event": "clear", "stream_sid": "stream-1"}]
+
+
+def test_live_bridge_defers_transcript_writes_and_flushes_them_by_call_end():
+    class RecordingTranscriptLogger:
+        def __init__(self):
+            self.fragments = []
+            self.turns_finished = 0
+
+        def add_transcript(self, role, text):
+            self.fragments.append((role, text))
+
+        def finish_turn(self):
+            self.turns_finished += 1
+            return {"CALLER": "he is allergic to coconut"}
+
+        def event(self, name, details=""):
+            return None
+
+    delivered = asyncio.Event()
+    transcript_logger = RecordingTranscriptLogger()
+    gemini = _MutedGemini([
+        type("Response", (), {
+            "server_content": _server_content(turn_complete=True, caller_text="allergic"),
+            "tool_call": None,
+        })(),
+    ], delivered=delivered)
+
+    session = asyncio.run(LiveVoiceBridge().run(
+        _RecordingSocket(stop_after=delivered),
+        ExotelCallMetadata("case-1", "thread-1", "call-1"),
+        gemini,
+        transcript_logger=transcript_logger,
+    ))
+
+    assert transcript_logger.fragments == [("CALLER", "allergic")]
+    assert transcript_logger.turns_finished == 1
+    assert {"role": "CALLER", "text": "he is allergic to coconut"} in session.transcript_messages
+
+
+def test_latency_metrics_record_per_turn_playout_latency():
+    metrics = VoiceLatencyMetrics()
+    metrics.mark_media(is_speech=True)
+    metrics.mark_gemini_input()
+    metrics.mark_media(is_speech=True)
+    metrics.mark_gemini_response()
+    metrics.mark_gemini_audio(chunk_bytes=9600)
+    metrics.mark_exotel_audio()
+
+    record = metrics.close_turn("turn_complete")
+
+    assert record["outcome"] == "turn_complete"
+    assert record["caller_end_to_playout_ms"] is not None
+    assert record["gemini_audio_to_playout_ms"] is not None
+    snapshot = metrics.snapshot()
+    assert snapshot["counters"]["turns_recorded"] == 1
+    assert snapshot["turn_latency"]["caller_end_to_playout_ms"]["count"] == 1
+    assert snapshot["transport"]["outbound_chunk_bytes"]["max_ms"] == 9600.0
+    assert metrics.close_turn("turn_complete") is None
+
+
+def test_voice_metrics_ignore_speech_that_barged_into_the_greeting():
+    """`greeting_to_first_caller_audio_ms` measured against pre-greeting speech
+    reported -73 s on a live call."""
+    metrics = VoiceLatencyMetrics()
+    metrics.mark_media(is_speech=True, frame_bytes=320, rms=900.0)
+    metrics.mark_greeting_complete()
+    assert metrics.snapshot()["greeting_to_first_caller_audio_ms"] is None
+
+    metrics.mark_media(is_speech=True, frame_bytes=320, rms=900.0)
+    assert metrics.snapshot()["greeting_to_first_caller_audio_ms"] >= 0

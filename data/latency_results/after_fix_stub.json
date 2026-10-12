@@ -1,0 +1,2332 @@
+{
+  "aggregate": {
+    "configuration": {
+      "trials": 15,
+      "known_model_first_token_ms": 250,
+      "known_model_chunk_interval_ms": 200,
+      "model_chunks_per_turn": 6,
+      "inbound_frame_ms": 20,
+      "pace_seconds": 0.02,
+      "voiced_frames": 25,
+      "transcript_io": false
+    },
+    "trials": 15,
+    "per_trial_pooled": {
+      "inbound_stage": {
+        "label": "inbound_stage",
+        "count": 15,
+        "p50_ms": 0.36,
+        "p95_ms": 0.55,
+        "max_ms": 0.56,
+        "mean_ms": 0.37
+      },
+      "inbound_stage_p95": {
+        "label": "inbound_stage",
+        "count": 15,
+        "p50_ms": 0.51,
+        "p95_ms": 1.37,
+        "max_ms": 1.48,
+        "mean_ms": 0.69
+      },
+      "outbound_stage": {
+        "label": "outbound_stage",
+        "count": 15,
+        "p50_ms": 1.23,
+        "p95_ms": 1.51,
+        "max_ms": 1.62,
+        "mean_ms": 1.15
+      },
+      "outbound_stage_p95": {
+        "label": "outbound_stage",
+        "count": 15,
+        "p50_ms": 1.68,
+        "p95_ms": 2.04,
+        "max_ms": 2.89,
+        "mean_ms": 1.72
+      },
+      "event_loop_lag_max": {
+        "label": "event_loop_lag",
+        "count": 15,
+        "p50_ms": 28.1,
+        "p95_ms": 35.41,
+        "max_ms": 59.95,
+        "mean_ms": 30.53
+      },
+      "event_loop_lag_p50": {
+        "label": "event_loop_lag",
+        "count": 15,
+        "p50_ms": 12.62,
+        "p95_ms": 14.06,
+        "max_ms": 14.22,
+        "mean_ms": 12.68
+      }
+    },
+    "caller_end_to_playout": {
+      "label": "caller end -> first playout (includes known model latency)",
+      "count": 15,
+      "p50_ms": 245.07,
+      "p95_ms": 248.88,
+      "max_ms": 251.06,
+      "mean_ms": 238.88
+    },
+    "notes": {
+      "known_model_first_token_ms": 250,
+      "interpretation": "caller_end_to_playout minus first_token_ms is everything we control",
+      "outbound_message_bytes_mean": 4312.0,
+      "keepalive_frames_per_trial": [
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6
+      ]
+    }
+  },
+  "trials": [
+    {
+      "elapsed_seconds": 2.06,
+      "media_frames_forwarded": 25,
+      "keepalive_frames": 6,
+      "outbound_frames": 6,
+      "inbound_stage": {
+        "label": "inbound stage",
+        "count": 25,
+        "p50_ms": 0.28,
+        "p95_ms": 1.48,
+        "max_ms": 2.75,
+        "mean_ms": 0.44
+      },
+      "outbound_stage": {
+        "label": "outbound stage",
+        "count": 6,
+        "p50_ms": 1.24,
+        "p95_ms": 1.47,
+        "max_ms": 1.47,
+        "mean_ms": 1.16
+      },
+      "caller_end_to_playout_ms": 245.07,
+      "event_loop_lag": {
+        "label": "event loop lag",
+        "count": 189,
+        "p50_ms": 11.47,
+        "p95_ms": 25.03,
+        "max_ms": 30.61,
+        "mean_ms": 12.43
+      },
+      "bridge_metrics": {
+        "media_frames_received": 60,
+        "speech_frames_received": 25,
+        "audio_frames_sent_to_gemini": 25,
+        "audio_frames_received_from_gemini": 6,
+        "audio_frames_sent_to_exotel": 6,
+        "caller_audio_to_gemini_ms": 2.17,
+        "gemini_processing_to_audio_ms": 619.35,
+        "gemini_audio_to_exotel_ms": 1.25,
+        "caller_audio_to_exotel_ms": 622.76,
+        "greeting_to_first_caller_audio_ms": null,
+        "lifecycle_ms": {
+          "gemini_connect": null,
+          "connect_to_first_inbound_audio": null,
+          "connect_to_first_gemini_audio": null,
+          "connect_to_first_playout": null,
+          "call_duration": null
+        },
+        "counters": {
+          "reconnects": 0,
+          "interruptions": 0,
+          "turns_recorded": 1
+        },
+        "transport": {
+          "inbound_frame_gap": {
+            "count": 59,
+            "p50_ms": 14.76,
+            "p95_ms": 34.89,
+            "max_ms": 37.37
+          },
+          "inbound_frame_bytes": {
+            "count": 60,
+            "p50_ms": 320.0,
+            "p95_ms": 320.0,
+            "max_ms": 320.0
+          },
+          "gemini_send": {
+            "count": 25,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.06
+          },
+          "outbound_chunk_gap": {
+            "count": 5,
+            "p50_ms": 188.14,
+            "p95_ms": 192.64,
+            "max_ms": 192.64
+          },
+          "outbound_chunk_bytes": {
+            "count": 6,
+            "p50_ms": 9600.0,
+            "p95_ms": 9600.0,
+            "max_ms": 9600.0
+          },
+          "exotel_send": {
+            "count": 6,
+            "p50_ms": 0.0,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "tool_roundtrip": {
+            "count": 6,
+            "p50_ms": 0.0,
+            "p95_ms": 0.0,
+            "max_ms": 0.0
+          },
+          "event_loop_lag": {
+            "count": 25,
+            "p50_ms": 0.0,
+            "p95_ms": 0.4,
+            "max_ms": 0.75
+          }
+        },
+        "turn_latency": {
+          "caller_end_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 0.94,
+            "p95_ms": 0.94,
+            "max_ms": 0.94
+          },
+          "caller_end_to_gemini_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.15,
+            "p95_ms": 0.15,
+            "max_ms": 0.15
+          },
+          "input_to_gemini_response_ms": {
+            "count": 1,
+            "p50_ms": 244.22,
+            "p95_ms": 244.22,
+            "max_ms": 244.22
+          },
+          "gemini_response_to_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "gemini_audio_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 0.78,
+            "p95_ms": 0.78,
+            "max_ms": 0.78
+          }
+        },
+        "turns": [
+          {
+            "turn": 1,
+            "outcome": "call_end",
+            "caller_end_to_playout_ms": 0.94,
+            "caller_end_to_gemini_audio_ms": 0.15,
+            "input_to_gemini_response_ms": 244.22,
+            "gemini_response_to_audio_ms": 0.01,
+            "gemini_audio_to_playout_ms": 0.78
+          }
+        ]
+      },
+      "outbound_message_bytes": 4312.0
+    },
+    {
+      "elapsed_seconds": 1.2,
+      "media_frames_forwarded": 25,
+      "keepalive_frames": 6,
+      "outbound_frames": 6,
+      "inbound_stage": {
+        "label": "inbound stage",
+        "count": 25,
+        "p50_ms": 0.32,
+        "p95_ms": 0.37,
+        "max_ms": 0.37,
+        "mean_ms": 0.3
+      },
+      "outbound_stage": {
+        "label": "outbound stage",
+        "count": 6,
+        "p50_ms": 1.27,
+        "p95_ms": 1.44,
+        "max_ms": 1.44,
+        "mean_ms": 1.21
+      },
+      "caller_end_to_playout_ms": 245.45,
+      "event_loop_lag": {
+        "label": "event loop lag",
+        "count": 186,
+        "p50_ms": 13.11,
+        "p95_ms": 25.01,
+        "max_ms": 26.82,
+        "mean_ms": 12.94
+      },
+      "bridge_metrics": {
+        "media_frames_received": 60,
+        "speech_frames_received": 25,
+        "audio_frames_sent_to_gemini": 25,
+        "audio_frames_received_from_gemini": 6,
+        "audio_frames_sent_to_exotel": 6,
+        "caller_audio_to_gemini_ms": 0.1,
+        "gemini_processing_to_audio_ms": 617.32,
+        "gemini_audio_to_exotel_ms": 1.12,
+        "caller_audio_to_exotel_ms": 618.55,
+        "greeting_to_first_caller_audio_ms": null,
+        "lifecycle_ms": {
+          "gemini_connect": null,
+          "connect_to_first_inbound_audio": null,
+          "connect_to_first_gemini_audio": null,
+          "connect_to_first_playout": null,
+          "call_duration": null
+        },
+        "counters": {
+          "reconnects": 0,
+          "interruptions": 0,
+          "turns_recorded": 1
+        },
+        "transport": {
+          "inbound_frame_gap": {
+            "count": 59,
+            "p50_ms": 14.6,
+            "p95_ms": 33.88,
+            "max_ms": 36.02
+          },
+          "inbound_frame_bytes": {
+            "count": 60,
+            "p50_ms": 320.0,
+            "p95_ms": 320.0,
+            "max_ms": 320.0
+          },
+          "gemini_send": {
+            "count": 25,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "outbound_chunk_gap": {
+            "count": 5,
+            "p50_ms": 188.46,
+            "p95_ms": 196.95,
+            "max_ms": 196.95
+          },
+          "outbound_chunk_bytes": {
+            "count": 6,
+            "p50_ms": 9600.0,
+            "p95_ms": 9600.0,
+            "max_ms": 9600.0
+          },
+          "exotel_send": {
+            "count": 6,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "tool_roundtrip": {
+            "count": 6,
+            "p50_ms": 0.0,
+            "p95_ms": 0.0,
+            "max_ms": 0.0
+          },
+          "event_loop_lag": {
+            "count": 25,
+            "p50_ms": 0.0,
+            "p95_ms": 0.91,
+            "max_ms": 2.96
+          }
+        },
+        "turn_latency": {
+          "caller_end_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 0.91,
+            "p95_ms": 0.91,
+            "max_ms": 0.91
+          },
+          "caller_end_to_gemini_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.16,
+            "p95_ms": 0.16,
+            "max_ms": 0.16
+          },
+          "input_to_gemini_response_ms": {
+            "count": 1,
+            "p50_ms": 244.7,
+            "p95_ms": 244.7,
+            "max_ms": 244.7
+          },
+          "gemini_response_to_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "gemini_audio_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 0.75,
+            "p95_ms": 0.75,
+            "max_ms": 0.75
+          }
+        },
+        "turns": [
+          {
+            "turn": 1,
+            "outcome": "call_end",
+            "caller_end_to_playout_ms": 0.91,
+            "caller_end_to_gemini_audio_ms": 0.16,
+            "input_to_gemini_response_ms": 244.7,
+            "gemini_response_to_audio_ms": 0.01,
+            "gemini_audio_to_playout_ms": 0.75
+          }
+        ]
+      },
+      "outbound_message_bytes": 4312.0
+    },
+    {
+      "elapsed_seconds": 1.2,
+      "media_frames_forwarded": 25,
+      "keepalive_frames": 6,
+      "outbound_frames": 6,
+      "inbound_stage": {
+        "label": "inbound stage",
+        "count": 25,
+        "p50_ms": 0.29,
+        "p95_ms": 0.41,
+        "max_ms": 0.42,
+        "mean_ms": 0.28
+      },
+      "outbound_stage": {
+        "label": "outbound stage",
+        "count": 6,
+        "p50_ms": 0.67,
+        "p95_ms": 1.3,
+        "max_ms": 1.3,
+        "mean_ms": 0.79
+      },
+      "caller_end_to_playout_ms": 224.73,
+      "event_loop_lag": {
+        "label": "event loop lag",
+        "count": 189,
+        "p50_ms": 12.66,
+        "p95_ms": 25.06,
+        "max_ms": 27.34,
+        "mean_ms": 12.85
+      },
+      "bridge_metrics": {
+        "media_frames_received": 60,
+        "speech_frames_received": 25,
+        "audio_frames_sent_to_gemini": 25,
+        "audio_frames_received_from_gemini": 6,
+        "audio_frames_sent_to_exotel": 6,
+        "caller_audio_to_gemini_ms": 0.11,
+        "gemini_processing_to_audio_ms": 601.63,
+        "gemini_audio_to_exotel_ms": 0.62,
+        "caller_audio_to_exotel_ms": 602.35,
+        "greeting_to_first_caller_audio_ms": null,
+        "lifecycle_ms": {
+          "gemini_connect": null,
+          "connect_to_first_inbound_audio": null,
+          "connect_to_first_gemini_audio": null,
+          "connect_to_first_playout": null,
+          "call_duration": null
+        },
+        "counters": {
+          "reconnects": 0,
+          "interruptions": 0,
+          "turns_recorded": 1
+        },
+        "transport": {
+          "inbound_frame_gap": {
+            "count": 59,
+            "p50_ms": 14.74,
+            "p95_ms": 34.55,
+            "max_ms": 35.93
+          },
+          "inbound_frame_bytes": {
+            "count": 60,
+            "p50_ms": 320.0,
+            "p95_ms": 320.0,
+            "max_ms": 320.0
+          },
+          "gemini_send": {
+            "count": 25,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "outbound_chunk_gap": {
+            "count": 5,
+            "p50_ms": 187.72,
+            "p95_ms": 193.29,
+            "max_ms": 193.29
+          },
+          "outbound_chunk_bytes": {
+            "count": 6,
+            "p50_ms": 9600.0,
+            "p95_ms": 9600.0,
+            "max_ms": 9600.0
+          },
+          "exotel_send": {
+            "count": 6,
+            "p50_ms": 0.0,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "tool_roundtrip": {
+            "count": 6,
+            "p50_ms": 0.0,
+            "p95_ms": 0.0,
+            "max_ms": 0.0
+          },
+          "event_loop_lag": {
+            "count": 25,
+            "p50_ms": 0.0,
+            "p95_ms": 1.29,
+            "max_ms": 1.76
+          }
+        },
+        "turn_latency": {
+          "caller_end_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 1.5,
+            "p95_ms": 1.5,
+            "max_ms": 1.5
+          },
+          "caller_end_to_gemini_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.42,
+            "p95_ms": 0.42,
+            "max_ms": 0.42
+          },
+          "input_to_gemini_response_ms": {
+            "count": 1,
+            "p50_ms": 223.64,
+            "p95_ms": 223.64,
+            "max_ms": 223.64
+          },
+          "gemini_response_to_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "gemini_audio_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 1.08,
+            "p95_ms": 1.08,
+            "max_ms": 1.08
+          }
+        },
+        "turns": [
+          {
+            "turn": 1,
+            "outcome": "call_end",
+            "caller_end_to_playout_ms": 1.5,
+            "caller_end_to_gemini_audio_ms": 0.42,
+            "input_to_gemini_response_ms": 223.64,
+            "gemini_response_to_audio_ms": 0.01,
+            "gemini_audio_to_playout_ms": 1.08
+          }
+        ]
+      },
+      "outbound_message_bytes": 4312.0
+    },
+    {
+      "elapsed_seconds": 1.2,
+      "media_frames_forwarded": 25,
+      "keepalive_frames": 6,
+      "outbound_frames": 6,
+      "inbound_stage": {
+        "label": "inbound stage",
+        "count": 25,
+        "p50_ms": 0.26,
+        "p95_ms": 0.38,
+        "max_ms": 0.82,
+        "mean_ms": 0.29
+      },
+      "outbound_stage": {
+        "label": "outbound stage",
+        "count": 6,
+        "p50_ms": 0.85,
+        "p95_ms": 1.54,
+        "max_ms": 1.54,
+        "mean_ms": 1.07
+      },
+      "caller_end_to_playout_ms": 227.75,
+      "event_loop_lag": {
+        "label": "event loop lag",
+        "count": 182,
+        "p50_ms": 12.62,
+        "p95_ms": 25.07,
+        "max_ms": 28.82,
+        "mean_ms": 12.54
+      },
+      "bridge_metrics": {
+        "media_frames_received": 60,
+        "speech_frames_received": 25,
+        "audio_frames_sent_to_gemini": 25,
+        "audio_frames_received_from_gemini": 6,
+        "audio_frames_sent_to_exotel": 6,
+        "caller_audio_to_gemini_ms": 0.09,
+        "gemini_processing_to_audio_ms": 607.85,
+        "gemini_audio_to_exotel_ms": 0.42,
+        "caller_audio_to_exotel_ms": 608.35,
+        "greeting_to_first_caller_audio_ms": null,
+        "lifecycle_ms": {
+          "gemini_connect": null,
+          "connect_to_first_inbound_audio": null,
+          "connect_to_first_gemini_audio": null,
+          "connect_to_first_playout": null,
+          "call_duration": null
+        },
+        "counters": {
+          "reconnects": 0,
+          "interruptions": 0,
+          "turns_recorded": 1
+        },
+        "transport": {
+          "inbound_frame_gap": {
+            "count": 59,
+            "p50_ms": 15.69,
+            "p95_ms": 33.96,
+            "max_ms": 35.39
+          },
+          "inbound_frame_bytes": {
+            "count": 60,
+            "p50_ms": 320.0,
+            "p95_ms": 320.0,
+            "max_ms": 320.0
+          },
+          "gemini_send": {
+            "count": 25,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "outbound_chunk_gap": {
+            "count": 5,
+            "p50_ms": 187.72,
+            "p95_ms": 193.09,
+            "max_ms": 193.09
+          },
+          "outbound_chunk_bytes": {
+            "count": 6,
+            "p50_ms": 9600.0,
+            "p95_ms": 9600.0,
+            "max_ms": 9600.0
+          },
+          "exotel_send": {
+            "count": 6,
+            "p50_ms": 0.0,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "tool_roundtrip": {
+            "count": 6,
+            "p50_ms": 0.0,
+            "p95_ms": 0.0,
+            "max_ms": 0.0
+          },
+          "event_loop_lag": {
+            "count": 25,
+            "p50_ms": 0.0,
+            "p95_ms": 3.44,
+            "max_ms": 9.79
+          }
+        },
+        "turn_latency": {
+          "caller_end_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 0.99,
+            "p95_ms": 0.99,
+            "max_ms": 0.99
+          },
+          "caller_end_to_gemini_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.28,
+            "p95_ms": 0.28,
+            "max_ms": 0.28
+          },
+          "input_to_gemini_response_ms": {
+            "count": 1,
+            "p50_ms": 227.03,
+            "p95_ms": 227.03,
+            "max_ms": 227.03
+          },
+          "gemini_response_to_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.0,
+            "p95_ms": 0.0,
+            "max_ms": 0.0
+          },
+          "gemini_audio_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 0.71,
+            "p95_ms": 0.71,
+            "max_ms": 0.71
+          }
+        },
+        "turns": [
+          {
+            "turn": 1,
+            "outcome": "call_end",
+            "caller_end_to_playout_ms": 0.99,
+            "caller_end_to_gemini_audio_ms": 0.28,
+            "input_to_gemini_response_ms": 227.03,
+            "gemini_response_to_audio_ms": 0.0,
+            "gemini_audio_to_playout_ms": 0.71
+          }
+        ]
+      },
+      "outbound_message_bytes": 4312.0
+    },
+    {
+      "elapsed_seconds": 1.2,
+      "media_frames_forwarded": 25,
+      "keepalive_frames": 6,
+      "outbound_frames": 6,
+      "inbound_stage": {
+        "label": "inbound stage",
+        "count": 25,
+        "p50_ms": 0.37,
+        "p95_ms": 0.47,
+        "max_ms": 0.63,
+        "mean_ms": 0.34
+      },
+      "outbound_stage": {
+        "label": "outbound stage",
+        "count": 6,
+        "p50_ms": 0.75,
+        "p95_ms": 1.31,
+        "max_ms": 1.31,
+        "mean_ms": 0.91
+      },
+      "caller_end_to_playout_ms": 230.84,
+      "event_loop_lag": {
+        "label": "event loop lag",
+        "count": 188,
+        "p50_ms": 14.22,
+        "p95_ms": 25.01,
+        "max_ms": 26.95,
+        "mean_ms": 13.86
+      },
+      "bridge_metrics": {
+        "media_frames_received": 60,
+        "speech_frames_received": 25,
+        "audio_frames_sent_to_gemini": 25,
+        "audio_frames_received_from_gemini": 6,
+        "audio_frames_sent_to_exotel": 6,
+        "caller_audio_to_gemini_ms": 0.17,
+        "gemini_processing_to_audio_ms": 607.74,
+        "gemini_audio_to_exotel_ms": 0.74,
+        "caller_audio_to_exotel_ms": 608.65,
+        "greeting_to_first_caller_audio_ms": null,
+        "lifecycle_ms": {
+          "gemini_connect": null,
+          "connect_to_first_inbound_audio": null,
+          "connect_to_first_gemini_audio": null,
+          "connect_to_first_playout": null,
+          "call_duration": null
+        },
+        "counters": {
+          "reconnects": 0,
+          "interruptions": 0,
+          "turns_recorded": 1
+        },
+        "transport": {
+          "inbound_frame_gap": {
+            "count": 59,
+            "p50_ms": 14.91,
+            "p95_ms": 34.06,
+            "max_ms": 35.43
+          },
+          "inbound_frame_bytes": {
+            "count": 60,
+            "p50_ms": 320.0,
+            "p95_ms": 320.0,
+            "max_ms": 320.0
+          },
+          "gemini_send": {
+            "count": 25,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.03
+          },
+          "outbound_chunk_gap": {
+            "count": 5,
+            "p50_ms": 185.87,
+            "p95_ms": 192.23,
+            "max_ms": 192.23
+          },
+          "outbound_chunk_bytes": {
+            "count": 6,
+            "p50_ms": 9600.0,
+            "p95_ms": 9600.0,
+            "max_ms": 9600.0
+          },
+          "exotel_send": {
+            "count": 6,
+            "p50_ms": 0.0,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "tool_roundtrip": {
+            "count": 6,
+            "p50_ms": 0.0,
+            "p95_ms": 0.0,
+            "max_ms": 0.0
+          },
+          "event_loop_lag": {
+            "count": 25,
+            "p50_ms": 0.0,
+            "p95_ms": 2.92,
+            "max_ms": 6.25
+          }
+        },
+        "turn_latency": {
+          "caller_end_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 0.84,
+            "p95_ms": 0.84,
+            "max_ms": 0.84
+          },
+          "caller_end_to_gemini_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.26,
+            "p95_ms": 0.26,
+            "max_ms": 0.26
+          },
+          "input_to_gemini_response_ms": {
+            "count": 1,
+            "p50_ms": 230.23,
+            "p95_ms": 230.23,
+            "max_ms": 230.23
+          },
+          "gemini_response_to_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.0,
+            "p95_ms": 0.0,
+            "max_ms": 0.0
+          },
+          "gemini_audio_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 0.59,
+            "p95_ms": 0.59,
+            "max_ms": 0.59
+          }
+        },
+        "turns": [
+          {
+            "turn": 1,
+            "outcome": "call_end",
+            "caller_end_to_playout_ms": 0.84,
+            "caller_end_to_gemini_audio_ms": 0.26,
+            "input_to_gemini_response_ms": 230.23,
+            "gemini_response_to_audio_ms": 0.0,
+            "gemini_audio_to_playout_ms": 0.59
+          }
+        ]
+      },
+      "outbound_message_bytes": 4312.0
+    },
+    {
+      "elapsed_seconds": 1.22,
+      "media_frames_forwarded": 25,
+      "keepalive_frames": 6,
+      "outbound_frames": 6,
+      "inbound_stage": {
+        "label": "inbound stage",
+        "count": 25,
+        "p50_ms": 0.23,
+        "p95_ms": 0.41,
+        "max_ms": 0.45,
+        "mean_ms": 0.26
+      },
+      "outbound_stage": {
+        "label": "outbound stage",
+        "count": 6,
+        "p50_ms": 0.62,
+        "p95_ms": 1.24,
+        "max_ms": 1.24,
+        "mean_ms": 0.74
+      },
+      "caller_end_to_playout_ms": 248.11,
+      "event_loop_lag": {
+        "label": "event loop lag",
+        "count": 189,
+        "p50_ms": 12.44,
+        "p95_ms": 25.07,
+        "max_ms": 28.44,
+        "mean_ms": 12.76
+      },
+      "bridge_metrics": {
+        "media_frames_received": 61,
+        "speech_frames_received": 25,
+        "audio_frames_sent_to_gemini": 25,
+        "audio_frames_received_from_gemini": 6,
+        "audio_frames_sent_to_exotel": 6,
+        "caller_audio_to_gemini_ms": 0.09,
+        "gemini_processing_to_audio_ms": 623.18,
+        "gemini_audio_to_exotel_ms": 0.73,
+        "caller_audio_to_exotel_ms": 623.99,
+        "greeting_to_first_caller_audio_ms": null,
+        "lifecycle_ms": {
+          "gemini_connect": null,
+          "connect_to_first_inbound_audio": null,
+          "connect_to_first_gemini_audio": null,
+          "connect_to_first_playout": null,
+          "call_duration": null
+        },
+        "counters": {
+          "reconnects": 0,
+          "interruptions": 0,
+          "turns_recorded": 1
+        },
+        "transport": {
+          "inbound_frame_gap": {
+            "count": 60,
+            "p50_ms": 19.0,
+            "p95_ms": 34.07,
+            "max_ms": 38.64
+          },
+          "inbound_frame_bytes": {
+            "count": 61,
+            "p50_ms": 320.0,
+            "p95_ms": 320.0,
+            "max_ms": 320.0
+          },
+          "gemini_send": {
+            "count": 25,
+            "p50_ms": 0.0,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "outbound_chunk_gap": {
+            "count": 5,
+            "p50_ms": 188.3,
+            "p95_ms": 192.44,
+            "max_ms": 192.44
+          },
+          "outbound_chunk_bytes": {
+            "count": 6,
+            "p50_ms": 9600.0,
+            "p95_ms": 9600.0,
+            "max_ms": 9600.0
+          },
+          "exotel_send": {
+            "count": 6,
+            "p50_ms": 0.0,
+            "p95_ms": 0.0,
+            "max_ms": 0.0
+          },
+          "tool_roundtrip": {
+            "count": 6,
+            "p50_ms": 0.0,
+            "p95_ms": 0.0,
+            "max_ms": 0.0
+          },
+          "event_loop_lag": {
+            "count": 26,
+            "p50_ms": 0.0,
+            "p95_ms": 1.55,
+            "max_ms": 3.28
+          }
+        },
+        "turn_latency": {
+          "caller_end_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 20.54,
+            "p95_ms": 20.54,
+            "max_ms": 20.54
+          },
+          "caller_end_to_gemini_audio_ms": {
+            "count": 1,
+            "p50_ms": 20.02,
+            "p95_ms": 20.02,
+            "max_ms": 20.02
+          },
+          "input_to_gemini_response_ms": {
+            "count": 1,
+            "p50_ms": 247.58,
+            "p95_ms": 247.58,
+            "max_ms": 247.58
+          },
+          "gemini_response_to_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.0,
+            "p95_ms": 0.0,
+            "max_ms": 0.0
+          },
+          "gemini_audio_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 0.52,
+            "p95_ms": 0.52,
+            "max_ms": 0.52
+          }
+        },
+        "turns": [
+          {
+            "turn": 1,
+            "outcome": "call_end",
+            "caller_end_to_playout_ms": 20.54,
+            "caller_end_to_gemini_audio_ms": 20.02,
+            "input_to_gemini_response_ms": 247.58,
+            "gemini_response_to_audio_ms": 0.0,
+            "gemini_audio_to_playout_ms": 0.52
+          }
+        ]
+      },
+      "outbound_message_bytes": 4312.0
+    },
+    {
+      "elapsed_seconds": 1.19,
+      "media_frames_forwarded": 25,
+      "keepalive_frames": 6,
+      "outbound_frames": 6,
+      "inbound_stage": {
+        "label": "inbound stage",
+        "count": 25,
+        "p50_ms": 0.28,
+        "p95_ms": 0.4,
+        "max_ms": 0.45,
+        "mean_ms": 0.29
+      },
+      "outbound_stage": {
+        "label": "outbound stage",
+        "count": 6,
+        "p50_ms": 1.13,
+        "p95_ms": 1.38,
+        "max_ms": 1.38,
+        "mean_ms": 1.12
+      },
+      "caller_end_to_playout_ms": 235.65,
+      "event_loop_lag": {
+        "label": "event loop lag",
+        "count": 187,
+        "p50_ms": 11.92,
+        "p95_ms": 25.08,
+        "max_ms": 28.1,
+        "mean_ms": 12.15
+      },
+      "bridge_metrics": {
+        "media_frames_received": 60,
+        "speech_frames_received": 25,
+        "audio_frames_sent_to_gemini": 25,
+        "audio_frames_received_from_gemini": 6,
+        "audio_frames_sent_to_exotel": 6,
+        "caller_audio_to_gemini_ms": 0.08,
+        "gemini_processing_to_audio_ms": 605.71,
+        "gemini_audio_to_exotel_ms": 0.99,
+        "caller_audio_to_exotel_ms": 606.78,
+        "greeting_to_first_caller_audio_ms": null,
+        "lifecycle_ms": {
+          "gemini_connect": null,
+          "connect_to_first_inbound_audio": null,
+          "connect_to_first_gemini_audio": null,
+          "connect_to_first_playout": null,
+          "call_duration": null
+        },
+        "counters": {
+          "reconnects": 0,
+          "interruptions": 0,
+          "turns_recorded": 1
+        },
+        "transport": {
+          "inbound_frame_gap": {
+            "count": 59,
+            "p50_ms": 14.85,
+            "p95_ms": 33.8,
+            "max_ms": 34.76
+          },
+          "inbound_frame_bytes": {
+            "count": 60,
+            "p50_ms": 320.0,
+            "p95_ms": 320.0,
+            "max_ms": 320.0
+          },
+          "gemini_send": {
+            "count": 25,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "outbound_chunk_gap": {
+            "count": 5,
+            "p50_ms": 185.36,
+            "p95_ms": 193.61,
+            "max_ms": 193.61
+          },
+          "outbound_chunk_bytes": {
+            "count": 6,
+            "p50_ms": 9600.0,
+            "p95_ms": 9600.0,
+            "max_ms": 9600.0
+          },
+          "exotel_send": {
+            "count": 6,
+            "p50_ms": 0.0,
+            "p95_ms": 0.02,
+            "max_ms": 0.02
+          },
+          "tool_roundtrip": {
+            "count": 6,
+            "p50_ms": 0.0,
+            "p95_ms": 0.0,
+            "max_ms": 0.0
+          },
+          "event_loop_lag": {
+            "count": 25,
+            "p50_ms": 0.0,
+            "p95_ms": 1.23,
+            "max_ms": 1.27
+          }
+        },
+        "turn_latency": {
+          "caller_end_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 0.68,
+            "p95_ms": 0.68,
+            "max_ms": 0.68
+          },
+          "caller_end_to_gemini_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.2,
+            "p95_ms": 0.2,
+            "max_ms": 0.2
+          },
+          "input_to_gemini_response_ms": {
+            "count": 1,
+            "p50_ms": 235.16,
+            "p95_ms": 235.16,
+            "max_ms": 235.16
+          },
+          "gemini_response_to_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.0,
+            "p95_ms": 0.0,
+            "max_ms": 0.0
+          },
+          "gemini_audio_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 0.48,
+            "p95_ms": 0.48,
+            "max_ms": 0.48
+          }
+        },
+        "turns": [
+          {
+            "turn": 1,
+            "outcome": "call_end",
+            "caller_end_to_playout_ms": 0.68,
+            "caller_end_to_gemini_audio_ms": 0.2,
+            "input_to_gemini_response_ms": 235.16,
+            "gemini_response_to_audio_ms": 0.0,
+            "gemini_audio_to_playout_ms": 0.48
+          }
+        ]
+      },
+      "outbound_message_bytes": 4312.0
+    },
+    {
+      "elapsed_seconds": 1.2,
+      "media_frames_forwarded": 25,
+      "keepalive_frames": 6,
+      "outbound_frames": 6,
+      "inbound_stage": {
+        "label": "inbound stage",
+        "count": 25,
+        "p50_ms": 0.36,
+        "p95_ms": 0.47,
+        "max_ms": 0.56,
+        "mean_ms": 0.36
+      },
+      "outbound_stage": {
+        "label": "outbound stage",
+        "count": 6,
+        "p50_ms": 1.18,
+        "p95_ms": 1.84,
+        "max_ms": 1.84,
+        "mean_ms": 1.35
+      },
+      "caller_end_to_playout_ms": 248.88,
+      "event_loop_lag": {
+        "label": "event loop lag",
+        "count": 189,
+        "p50_ms": 11.99,
+        "p95_ms": 25.12,
+        "max_ms": 29.91,
+        "mean_ms": 12.5
+      },
+      "bridge_metrics": {
+        "media_frames_received": 60,
+        "speech_frames_received": 25,
+        "audio_frames_sent_to_gemini": 25,
+        "audio_frames_received_from_gemini": 6,
+        "audio_frames_sent_to_exotel": 6,
+        "caller_audio_to_gemini_ms": 0.36,
+        "gemini_processing_to_audio_ms": 623.19,
+        "gemini_audio_to_exotel_ms": 0.9,
+        "caller_audio_to_exotel_ms": 624.45,
+        "greeting_to_first_caller_audio_ms": null,
+        "lifecycle_ms": {
+          "gemini_connect": null,
+          "connect_to_first_inbound_audio": null,
+          "connect_to_first_gemini_audio": null,
+          "connect_to_first_playout": null,
+          "call_duration": null
+        },
+        "counters": {
+          "reconnects": 0,
+          "interruptions": 0,
+          "turns_recorded": 1
+        },
+        "transport": {
+          "inbound_frame_gap": {
+            "count": 59,
+            "p50_ms": 18.09,
+            "p95_ms": 33.18,
+            "max_ms": 33.98
+          },
+          "inbound_frame_bytes": {
+            "count": 60,
+            "p50_ms": 320.0,
+            "p95_ms": 320.0,
+            "max_ms": 320.0
+          },
+          "gemini_send": {
+            "count": 25,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.04
+          },
+          "outbound_chunk_gap": {
+            "count": 5,
+            "p50_ms": 187.17,
+            "p95_ms": 189.64,
+            "max_ms": 189.64
+          },
+          "outbound_chunk_bytes": {
+            "count": 6,
+            "p50_ms": 9600.0,
+            "p95_ms": 9600.0,
+            "max_ms": 9600.0
+          },
+          "exotel_send": {
+            "count": 6,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "tool_roundtrip": {
+            "count": 6,
+            "p50_ms": 0.0,
+            "p95_ms": 0.0,
+            "max_ms": 0.0
+          },
+          "event_loop_lag": {
+            "count": 25,
+            "p50_ms": 0.0,
+            "p95_ms": 2.31,
+            "max_ms": 2.53
+          }
+        },
+        "turn_latency": {
+          "caller_end_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 1.37,
+            "p95_ms": 1.37,
+            "max_ms": 1.37
+          },
+          "caller_end_to_gemini_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.24,
+            "p95_ms": 0.24,
+            "max_ms": 0.24
+          },
+          "input_to_gemini_response_ms": {
+            "count": 1,
+            "p50_ms": 247.71,
+            "p95_ms": 247.71,
+            "max_ms": 247.71
+          },
+          "gemini_response_to_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "gemini_audio_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 1.13,
+            "p95_ms": 1.13,
+            "max_ms": 1.13
+          }
+        },
+        "turns": [
+          {
+            "turn": 1,
+            "outcome": "call_end",
+            "caller_end_to_playout_ms": 1.37,
+            "caller_end_to_gemini_audio_ms": 0.24,
+            "input_to_gemini_response_ms": 247.71,
+            "gemini_response_to_audio_ms": 0.01,
+            "gemini_audio_to_playout_ms": 1.13
+          }
+        ]
+      },
+      "outbound_message_bytes": 4312.0
+    },
+    {
+      "elapsed_seconds": 1.22,
+      "media_frames_forwarded": 25,
+      "keepalive_frames": 6,
+      "outbound_frames": 6,
+      "inbound_stage": {
+        "label": "inbound stage",
+        "count": 25,
+        "p50_ms": 0.36,
+        "p95_ms": 0.51,
+        "max_ms": 0.52,
+        "mean_ms": 0.36
+      },
+      "outbound_stage": {
+        "label": "outbound stage",
+        "count": 6,
+        "p50_ms": 1.23,
+        "p95_ms": 1.8,
+        "max_ms": 1.8,
+        "mean_ms": 1.22
+      },
+      "caller_end_to_playout_ms": 251.06,
+      "event_loop_lag": {
+        "label": "event loop lag",
+        "count": 196,
+        "p50_ms": 13.25,
+        "p95_ms": 24.66,
+        "max_ms": 26.73,
+        "mean_ms": 13.14
+      },
+      "bridge_metrics": {
+        "media_frames_received": 61,
+        "speech_frames_received": 25,
+        "audio_frames_sent_to_gemini": 25,
+        "audio_frames_received_from_gemini": 6,
+        "audio_frames_sent_to_exotel": 6,
+        "caller_audio_to_gemini_ms": 0.08,
+        "gemini_processing_to_audio_ms": 619.82,
+        "gemini_audio_to_exotel_ms": 0.31,
+        "caller_audio_to_exotel_ms": 620.21,
+        "greeting_to_first_caller_audio_ms": null,
+        "lifecycle_ms": {
+          "gemini_connect": null,
+          "connect_to_first_inbound_audio": null,
+          "connect_to_first_gemini_audio": null,
+          "connect_to_first_playout": null,
+          "call_duration": null
+        },
+        "counters": {
+          "reconnects": 0,
+          "interruptions": 0,
+          "turns_recorded": 1
+        },
+        "transport": {
+          "inbound_frame_gap": {
+            "count": 60,
+            "p50_ms": 18.29,
+            "p95_ms": 33.17,
+            "max_ms": 34.62
+          },
+          "inbound_frame_bytes": {
+            "count": 61,
+            "p50_ms": 320.0,
+            "p95_ms": 320.0,
+            "max_ms": 320.0
+          },
+          "gemini_send": {
+            "count": 25,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.22
+          },
+          "outbound_chunk_gap": {
+            "count": 5,
+            "p50_ms": 188.14,
+            "p95_ms": 189.42,
+            "max_ms": 189.42
+          },
+          "outbound_chunk_bytes": {
+            "count": 6,
+            "p50_ms": 9600.0,
+            "p95_ms": 9600.0,
+            "max_ms": 9600.0
+          },
+          "exotel_send": {
+            "count": 6,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "tool_roundtrip": {
+            "count": 6,
+            "p50_ms": 0.0,
+            "p95_ms": 0.0,
+            "max_ms": 0.0
+          },
+          "event_loop_lag": {
+            "count": 26,
+            "p50_ms": 0.0,
+            "p95_ms": 1.01,
+            "max_ms": 2.3
+          }
+        },
+        "turn_latency": {
+          "caller_end_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 1.36,
+            "p95_ms": 1.36,
+            "max_ms": 1.36
+          },
+          "caller_end_to_gemini_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.31,
+            "p95_ms": 0.31,
+            "max_ms": 0.31
+          },
+          "input_to_gemini_response_ms": {
+            "count": 1,
+            "p50_ms": 250.0,
+            "p95_ms": 250.0,
+            "max_ms": 250.0
+          },
+          "gemini_response_to_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "gemini_audio_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 1.05,
+            "p95_ms": 1.05,
+            "max_ms": 1.05
+          }
+        },
+        "turns": [
+          {
+            "turn": 1,
+            "outcome": "call_end",
+            "caller_end_to_playout_ms": 1.36,
+            "caller_end_to_gemini_audio_ms": 0.31,
+            "input_to_gemini_response_ms": 250.0,
+            "gemini_response_to_audio_ms": 0.01,
+            "gemini_audio_to_playout_ms": 1.05
+          }
+        ]
+      },
+      "outbound_message_bytes": 4312.0
+    },
+    {
+      "elapsed_seconds": 1.22,
+      "media_frames_forwarded": 25,
+      "keepalive_frames": 6,
+      "outbound_frames": 6,
+      "inbound_stage": {
+        "label": "inbound stage",
+        "count": 25,
+        "p50_ms": 0.38,
+        "p95_ms": 0.52,
+        "max_ms": 0.53,
+        "mean_ms": 0.36
+      },
+      "outbound_stage": {
+        "label": "outbound stage",
+        "count": 6,
+        "p50_ms": 1.36,
+        "p95_ms": 1.98,
+        "max_ms": 1.98,
+        "mean_ms": 1.49
+      },
+      "caller_end_to_playout_ms": 245.21,
+      "event_loop_lag": {
+        "label": "event loop lag",
+        "count": 185,
+        "p50_ms": 12.25,
+        "p95_ms": 25.19,
+        "max_ms": 35.41,
+        "mean_ms": 12.55
+      },
+      "bridge_metrics": {
+        "media_frames_received": 61,
+        "speech_frames_received": 25,
+        "audio_frames_sent_to_gemini": 25,
+        "audio_frames_received_from_gemini": 6,
+        "audio_frames_sent_to_exotel": 6,
+        "caller_audio_to_gemini_ms": 0.14,
+        "gemini_processing_to_audio_ms": 622.66,
+        "gemini_audio_to_exotel_ms": 0.91,
+        "caller_audio_to_exotel_ms": 623.72,
+        "greeting_to_first_caller_audio_ms": null,
+        "lifecycle_ms": {
+          "gemini_connect": null,
+          "connect_to_first_inbound_audio": null,
+          "connect_to_first_gemini_audio": null,
+          "connect_to_first_playout": null,
+          "call_duration": null
+        },
+        "counters": {
+          "reconnects": 0,
+          "interruptions": 0,
+          "turns_recorded": 1
+        },
+        "transport": {
+          "inbound_frame_gap": {
+            "count": 60,
+            "p50_ms": 14.95,
+            "p95_ms": 33.73,
+            "max_ms": 49.69
+          },
+          "inbound_frame_bytes": {
+            "count": 61,
+            "p50_ms": 320.0,
+            "p95_ms": 320.0,
+            "max_ms": 320.0
+          },
+          "gemini_send": {
+            "count": 25,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.04
+          },
+          "outbound_chunk_gap": {
+            "count": 5,
+            "p50_ms": 185.73,
+            "p95_ms": 193.39,
+            "max_ms": 193.39
+          },
+          "outbound_chunk_bytes": {
+            "count": 6,
+            "p50_ms": 9600.0,
+            "p95_ms": 9600.0,
+            "max_ms": 9600.0
+          },
+          "exotel_send": {
+            "count": 6,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "tool_roundtrip": {
+            "count": 6,
+            "p50_ms": 0.0,
+            "p95_ms": 0.0,
+            "max_ms": 0.0
+          },
+          "event_loop_lag": {
+            "count": 26,
+            "p50_ms": 0.0,
+            "p95_ms": 0.08,
+            "max_ms": 0.8
+          }
+        },
+        "turn_latency": {
+          "caller_end_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 0.71,
+            "p95_ms": 0.71,
+            "max_ms": 0.71
+          },
+          "caller_end_to_gemini_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.3,
+            "p95_ms": 0.3,
+            "max_ms": 0.3
+          },
+          "input_to_gemini_response_ms": {
+            "count": 1,
+            "p50_ms": 244.76,
+            "p95_ms": 244.76,
+            "max_ms": 244.76
+          },
+          "gemini_response_to_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "gemini_audio_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 0.4,
+            "p95_ms": 0.4,
+            "max_ms": 0.4
+          }
+        },
+        "turns": [
+          {
+            "turn": 1,
+            "outcome": "call_end",
+            "caller_end_to_playout_ms": 0.71,
+            "caller_end_to_gemini_audio_ms": 0.3,
+            "input_to_gemini_response_ms": 244.76,
+            "gemini_response_to_audio_ms": 0.01,
+            "gemini_audio_to_playout_ms": 0.4
+          }
+        ]
+      },
+      "outbound_message_bytes": 4312.0
+    },
+    {
+      "elapsed_seconds": 1.18,
+      "media_frames_forwarded": 25,
+      "keepalive_frames": 6,
+      "outbound_frames": 6,
+      "inbound_stage": {
+        "label": "inbound stage",
+        "count": 25,
+        "p50_ms": 0.39,
+        "p95_ms": 0.66,
+        "max_ms": 0.74,
+        "mean_ms": 0.4
+      },
+      "outbound_stage": {
+        "label": "outbound stage",
+        "count": 6,
+        "p50_ms": 1.13,
+        "p95_ms": 2.04,
+        "max_ms": 2.04,
+        "mean_ms": 1.34
+      },
+      "caller_end_to_playout_ms": 226.1,
+      "event_loop_lag": {
+        "label": "event loop lag",
+        "count": 185,
+        "p50_ms": 13.22,
+        "p95_ms": 25.12,
+        "max_ms": 28.6,
+        "mean_ms": 12.95
+      },
+      "bridge_metrics": {
+        "media_frames_received": 59,
+        "speech_frames_received": 25,
+        "audio_frames_sent_to_gemini": 25,
+        "audio_frames_received_from_gemini": 6,
+        "audio_frames_sent_to_exotel": 6,
+        "caller_audio_to_gemini_ms": 0.18,
+        "gemini_processing_to_audio_ms": 598.19,
+        "gemini_audio_to_exotel_ms": 1.82,
+        "caller_audio_to_exotel_ms": 600.19,
+        "greeting_to_first_caller_audio_ms": null,
+        "lifecycle_ms": {
+          "gemini_connect": null,
+          "connect_to_first_inbound_audio": null,
+          "connect_to_first_gemini_audio": null,
+          "connect_to_first_playout": null,
+          "call_duration": null
+        },
+        "counters": {
+          "reconnects": 0,
+          "interruptions": 0,
+          "turns_recorded": 1
+        },
+        "transport": {
+          "inbound_frame_gap": {
+            "count": 58,
+            "p50_ms": 14.67,
+            "p95_ms": 34.71,
+            "max_ms": 37.41
+          },
+          "inbound_frame_bytes": {
+            "count": 59,
+            "p50_ms": 320.0,
+            "p95_ms": 320.0,
+            "max_ms": 320.0
+          },
+          "gemini_send": {
+            "count": 25,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.03
+          },
+          "outbound_chunk_gap": {
+            "count": 5,
+            "p50_ms": 185.65,
+            "p95_ms": 193.94,
+            "max_ms": 193.94
+          },
+          "outbound_chunk_bytes": {
+            "count": 6,
+            "p50_ms": 9600.0,
+            "p95_ms": 9600.0,
+            "max_ms": 9600.0
+          },
+          "exotel_send": {
+            "count": 6,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "tool_roundtrip": {
+            "count": 6,
+            "p50_ms": 0.0,
+            "p95_ms": 0.0,
+            "max_ms": 0.0
+          },
+          "event_loop_lag": {
+            "count": 25,
+            "p50_ms": 0.0,
+            "p95_ms": 0.78,
+            "max_ms": 4.1
+          }
+        },
+        "turn_latency": {
+          "caller_end_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 19.59,
+            "p95_ms": 19.59,
+            "max_ms": 19.59
+          },
+          "caller_end_to_gemini_audio_ms": {
+            "count": 1,
+            "p50_ms": 18.69,
+            "p95_ms": 18.69,
+            "max_ms": 18.69
+          },
+          "input_to_gemini_response_ms": {
+            "count": 1,
+            "p50_ms": 225.17,
+            "p95_ms": 225.17,
+            "max_ms": 225.17
+          },
+          "gemini_response_to_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "gemini_audio_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 0.9,
+            "p95_ms": 0.9,
+            "max_ms": 0.9
+          }
+        },
+        "turns": [
+          {
+            "turn": 1,
+            "outcome": "call_end",
+            "caller_end_to_playout_ms": 19.59,
+            "caller_end_to_gemini_audio_ms": 18.69,
+            "input_to_gemini_response_ms": 225.17,
+            "gemini_response_to_audio_ms": 0.01,
+            "gemini_audio_to_playout_ms": 0.9
+          }
+        ]
+      },
+      "outbound_message_bytes": 4312.0
+    },
+    {
+      "elapsed_seconds": 1.2,
+      "media_frames_forwarded": 25,
+      "keepalive_frames": 6,
+      "outbound_frames": 6,
+      "inbound_stage": {
+        "label": "inbound stage",
+        "count": 25,
+        "p50_ms": 0.43,
+        "p95_ms": 0.66,
+        "max_ms": 0.8,
+        "mean_ms": 0.45
+      },
+      "outbound_stage": {
+        "label": "outbound stage",
+        "count": 6,
+        "p50_ms": 1.35,
+        "p95_ms": 1.68,
+        "max_ms": 1.68,
+        "mean_ms": 1.42
+      },
+      "caller_end_to_playout_ms": 247.85,
+      "event_loop_lag": {
+        "label": "event loop lag",
+        "count": 193,
+        "p50_ms": 12.18,
+        "p95_ms": 24.72,
+        "max_ms": 26.11,
+        "mean_ms": 12.43
+      },
+      "bridge_metrics": {
+        "media_frames_received": 60,
+        "speech_frames_received": 25,
+        "audio_frames_sent_to_gemini": 25,
+        "audio_frames_received_from_gemini": 6,
+        "audio_frames_sent_to_exotel": 6,
+        "caller_audio_to_gemini_ms": 0.12,
+        "gemini_processing_to_audio_ms": 618.04,
+        "gemini_audio_to_exotel_ms": 1.13,
+        "caller_audio_to_exotel_ms": 619.29,
+        "greeting_to_first_caller_audio_ms": null,
+        "lifecycle_ms": {
+          "gemini_connect": null,
+          "connect_to_first_inbound_audio": null,
+          "connect_to_first_gemini_audio": null,
+          "connect_to_first_playout": null,
+          "call_duration": null
+        },
+        "counters": {
+          "reconnects": 0,
+          "interruptions": 0,
+          "turns_recorded": 1
+        },
+        "transport": {
+          "inbound_frame_gap": {
+            "count": 59,
+            "p50_ms": 18.49,
+            "p95_ms": 33.16,
+            "max_ms": 34.2
+          },
+          "inbound_frame_bytes": {
+            "count": 60,
+            "p50_ms": 320.0,
+            "p95_ms": 320.0,
+            "max_ms": 320.0
+          },
+          "gemini_send": {
+            "count": 25,
+            "p50_ms": 0.01,
+            "p95_ms": 0.02,
+            "max_ms": 0.03
+          },
+          "outbound_chunk_gap": {
+            "count": 5,
+            "p50_ms": 186.18,
+            "p95_ms": 190.53,
+            "max_ms": 190.53
+          },
+          "outbound_chunk_bytes": {
+            "count": 6,
+            "p50_ms": 9600.0,
+            "p95_ms": 9600.0,
+            "max_ms": 9600.0
+          },
+          "exotel_send": {
+            "count": 6,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "tool_roundtrip": {
+            "count": 6,
+            "p50_ms": 0.0,
+            "p95_ms": 0.0,
+            "max_ms": 0.0
+          },
+          "event_loop_lag": {
+            "count": 25,
+            "p50_ms": 0.0,
+            "p95_ms": 1.34,
+            "max_ms": 2.23
+          }
+        },
+        "turn_latency": {
+          "caller_end_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 20.05,
+            "p95_ms": 20.05,
+            "max_ms": 20.05
+          },
+          "caller_end_to_gemini_audio_ms": {
+            "count": 1,
+            "p50_ms": 18.83,
+            "p95_ms": 18.83,
+            "max_ms": 18.83
+          },
+          "input_to_gemini_response_ms": {
+            "count": 1,
+            "p50_ms": 246.62,
+            "p95_ms": 246.62,
+            "max_ms": 246.62
+          },
+          "gemini_response_to_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "gemini_audio_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 1.22,
+            "p95_ms": 1.22,
+            "max_ms": 1.22
+          }
+        },
+        "turns": [
+          {
+            "turn": 1,
+            "outcome": "call_end",
+            "caller_end_to_playout_ms": 20.05,
+            "caller_end_to_gemini_audio_ms": 18.83,
+            "input_to_gemini_response_ms": 246.62,
+            "gemini_response_to_audio_ms": 0.01,
+            "gemini_audio_to_playout_ms": 1.22
+          }
+        ]
+      },
+      "outbound_message_bytes": 4312.0
+    },
+    {
+      "elapsed_seconds": 1.2,
+      "media_frames_forwarded": 25,
+      "keepalive_frames": 6,
+      "outbound_frames": 6,
+      "inbound_stage": {
+        "label": "inbound stage",
+        "count": 25,
+        "p50_ms": 0.55,
+        "p95_ms": 1.37,
+        "max_ms": 1.51,
+        "mean_ms": 0.63
+      },
+      "outbound_stage": {
+        "label": "outbound stage",
+        "count": 6,
+        "p50_ms": 1.51,
+        "p95_ms": 2.89,
+        "max_ms": 2.89,
+        "mean_ms": 1.73
+      },
+      "caller_end_to_playout_ms": 247.36,
+      "event_loop_lag": {
+        "label": "event loop lag",
+        "count": 182,
+        "p50_ms": 12.06,
+        "p95_ms": 25.02,
+        "max_ms": 59.95,
+        "mean_ms": 12.86
+      },
+      "bridge_metrics": {
+        "media_frames_received": 60,
+        "speech_frames_received": 25,
+        "audio_frames_sent_to_gemini": 25,
+        "audio_frames_received_from_gemini": 6,
+        "audio_frames_sent_to_exotel": 6,
+        "caller_audio_to_gemini_ms": 0.2,
+        "gemini_processing_to_audio_ms": 615.32,
+        "gemini_audio_to_exotel_ms": 1.44,
+        "caller_audio_to_exotel_ms": 616.96,
+        "greeting_to_first_caller_audio_ms": null,
+        "lifecycle_ms": {
+          "gemini_connect": null,
+          "connect_to_first_inbound_audio": null,
+          "connect_to_first_gemini_audio": null,
+          "connect_to_first_playout": null,
+          "call_duration": null
+        },
+        "counters": {
+          "reconnects": 0,
+          "interruptions": 0,
+          "turns_recorded": 1
+        },
+        "transport": {
+          "inbound_frame_gap": {
+            "count": 59,
+            "p50_ms": 15.26,
+            "p95_ms": 33.99,
+            "max_ms": 60.59
+          },
+          "inbound_frame_bytes": {
+            "count": 60,
+            "p50_ms": 320.0,
+            "p95_ms": 320.0,
+            "max_ms": 320.0
+          },
+          "gemini_send": {
+            "count": 25,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.03
+          },
+          "outbound_chunk_gap": {
+            "count": 5,
+            "p50_ms": 185.69,
+            "p95_ms": 194.79,
+            "max_ms": 194.79
+          },
+          "outbound_chunk_bytes": {
+            "count": 6,
+            "p50_ms": 9600.0,
+            "p95_ms": 9600.0,
+            "max_ms": 9600.0
+          },
+          "exotel_send": {
+            "count": 6,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "tool_roundtrip": {
+            "count": 6,
+            "p50_ms": 0.0,
+            "p95_ms": 0.0,
+            "max_ms": 0.0
+          },
+          "event_loop_lag": {
+            "count": 24,
+            "p50_ms": 0.0,
+            "p95_ms": 1.85,
+            "max_ms": 42.92
+          }
+        },
+        "turn_latency": {
+          "caller_end_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 2.36,
+            "p95_ms": 2.36,
+            "max_ms": 2.36
+          },
+          "caller_end_to_gemini_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.86,
+            "p95_ms": 0.86,
+            "max_ms": 0.86
+          },
+          "input_to_gemini_response_ms": {
+            "count": 1,
+            "p50_ms": 245.82,
+            "p95_ms": 245.82,
+            "max_ms": 245.82
+          },
+          "gemini_response_to_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.02,
+            "p95_ms": 0.02,
+            "max_ms": 0.02
+          },
+          "gemini_audio_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 1.5,
+            "p95_ms": 1.5,
+            "max_ms": 1.5
+          }
+        },
+        "turns": [
+          {
+            "turn": 1,
+            "outcome": "call_end",
+            "caller_end_to_playout_ms": 2.36,
+            "caller_end_to_gemini_audio_ms": 0.86,
+            "input_to_gemini_response_ms": 245.82,
+            "gemini_response_to_audio_ms": 0.02,
+            "gemini_audio_to_playout_ms": 1.5
+          }
+        ]
+      },
+      "outbound_message_bytes": 4312.0
+    },
+    {
+      "elapsed_seconds": 1.2,
+      "media_frames_forwarded": 25,
+      "keepalive_frames": 6,
+      "outbound_frames": 6,
+      "inbound_stage": {
+        "label": "inbound stage",
+        "count": 25,
+        "p50_ms": 0.56,
+        "p95_ms": 1.2,
+        "max_ms": 1.2,
+        "mean_ms": 0.64
+      },
+      "outbound_stage": {
+        "label": "outbound stage",
+        "count": 6,
+        "p50_ms": 1.62,
+        "p95_ms": 1.82,
+        "max_ms": 1.82,
+        "mean_ms": 1.6
+      },
+      "caller_end_to_playout_ms": 229.14,
+      "event_loop_lag": {
+        "label": "event loop lag",
+        "count": 191,
+        "p50_ms": 14.06,
+        "p95_ms": 24.93,
+        "max_ms": 26.57,
+        "mean_ms": 13.49
+      },
+      "bridge_metrics": {
+        "media_frames_received": 60,
+        "speech_frames_received": 25,
+        "audio_frames_sent_to_gemini": 25,
+        "audio_frames_received_from_gemini": 6,
+        "audio_frames_sent_to_exotel": 6,
+        "caller_audio_to_gemini_ms": 0.15,
+        "gemini_processing_to_audio_ms": 602.47,
+        "gemini_audio_to_exotel_ms": 0.99,
+        "caller_audio_to_exotel_ms": 603.61,
+        "greeting_to_first_caller_audio_ms": null,
+        "lifecycle_ms": {
+          "gemini_connect": null,
+          "connect_to_first_inbound_audio": null,
+          "connect_to_first_gemini_audio": null,
+          "connect_to_first_playout": null,
+          "call_duration": null
+        },
+        "counters": {
+          "reconnects": 0,
+          "interruptions": 0,
+          "turns_recorded": 1
+        },
+        "transport": {
+          "inbound_frame_gap": {
+            "count": 59,
+            "p50_ms": 14.87,
+            "p95_ms": 33.28,
+            "max_ms": 35.87
+          },
+          "inbound_frame_bytes": {
+            "count": 60,
+            "p50_ms": 320.0,
+            "p95_ms": 320.0,
+            "max_ms": 320.0
+          },
+          "gemini_send": {
+            "count": 25,
+            "p50_ms": 0.01,
+            "p95_ms": 0.02,
+            "max_ms": 0.02
+          },
+          "outbound_chunk_gap": {
+            "count": 5,
+            "p50_ms": 187.09,
+            "p95_ms": 192.65,
+            "max_ms": 192.65
+          },
+          "outbound_chunk_bytes": {
+            "count": 6,
+            "p50_ms": 9600.0,
+            "p95_ms": 9600.0,
+            "max_ms": 9600.0
+          },
+          "exotel_send": {
+            "count": 6,
+            "p50_ms": 0.01,
+            "p95_ms": 0.02,
+            "max_ms": 0.02
+          },
+          "tool_roundtrip": {
+            "count": 6,
+            "p50_ms": 0.0,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "event_loop_lag": {
+            "count": 25,
+            "p50_ms": 0.0,
+            "p95_ms": 1.83,
+            "max_ms": 2.49
+          }
+        },
+        "turn_latency": {
+          "caller_end_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 2.73,
+            "p95_ms": 2.73,
+            "max_ms": 2.73
+          },
+          "caller_end_to_gemini_audio_ms": {
+            "count": 1,
+            "p50_ms": 1.27,
+            "p95_ms": 1.27,
+            "max_ms": 1.27
+          },
+          "input_to_gemini_response_ms": {
+            "count": 1,
+            "p50_ms": 227.65,
+            "p95_ms": 227.65,
+            "max_ms": 227.65
+          },
+          "gemini_response_to_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "gemini_audio_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 1.46,
+            "p95_ms": 1.46,
+            "max_ms": 1.46
+          }
+        },
+        "turns": [
+          {
+            "turn": 1,
+            "outcome": "call_end",
+            "caller_end_to_playout_ms": 2.73,
+            "caller_end_to_gemini_audio_ms": 1.27,
+            "input_to_gemini_response_ms": 227.65,
+            "gemini_response_to_audio_ms": 0.01,
+            "gemini_audio_to_playout_ms": 1.46
+          }
+        ]
+      },
+      "outbound_message_bytes": 4312.0
+    },
+    {
+      "elapsed_seconds": 1.19,
+      "media_frames_forwarded": 25,
+      "keepalive_frames": 6,
+      "outbound_frames": 6,
+      "inbound_stage": {
+        "label": "inbound stage",
+        "count": 25,
+        "p50_ms": 0.52,
+        "p95_ms": 1.02,
+        "max_ms": 1.14,
+        "mean_ms": 0.55
+      },
+      "outbound_stage": {
+        "label": "outbound stage",
+        "count": 6,
+        "p50_ms": 1.4,
+        "p95_ms": 2.0,
+        "max_ms": 2.0,
+        "mean_ms": 1.56
+      },
+      "caller_end_to_playout_ms": 229.95,
+      "event_loop_lag": {
+        "label": "event loop lag",
+        "count": 188,
+        "p50_ms": 12.82,
+        "p95_ms": 25.06,
+        "max_ms": 27.66,
+        "mean_ms": 13.08
+      },
+      "bridge_metrics": {
+        "media_frames_received": 59,
+        "speech_frames_received": 25,
+        "audio_frames_sent_to_gemini": 25,
+        "audio_frames_received_from_gemini": 6,
+        "audio_frames_sent_to_exotel": 6,
+        "caller_audio_to_gemini_ms": 0.15,
+        "gemini_processing_to_audio_ms": 604.46,
+        "gemini_audio_to_exotel_ms": 0.86,
+        "caller_audio_to_exotel_ms": 605.47,
+        "greeting_to_first_caller_audio_ms": null,
+        "lifecycle_ms": {
+          "gemini_connect": null,
+          "connect_to_first_inbound_audio": null,
+          "connect_to_first_gemini_audio": null,
+          "connect_to_first_playout": null,
+          "call_duration": null
+        },
+        "counters": {
+          "reconnects": 0,
+          "interruptions": 0,
+          "turns_recorded": 1
+        },
+        "transport": {
+          "inbound_frame_gap": {
+            "count": 58,
+            "p50_ms": 15.24,
+            "p95_ms": 33.18,
+            "max_ms": 34.52
+          },
+          "inbound_frame_bytes": {
+            "count": 59,
+            "p50_ms": 320.0,
+            "p95_ms": 320.0,
+            "max_ms": 320.0
+          },
+          "gemini_send": {
+            "count": 25,
+            "p50_ms": 0.01,
+            "p95_ms": 0.02,
+            "max_ms": 0.02
+          },
+          "outbound_chunk_gap": {
+            "count": 5,
+            "p50_ms": 189.99,
+            "p95_ms": 191.97,
+            "max_ms": 191.97
+          },
+          "outbound_chunk_bytes": {
+            "count": 6,
+            "p50_ms": 9600.0,
+            "p95_ms": 9600.0,
+            "max_ms": 9600.0
+          },
+          "exotel_send": {
+            "count": 6,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "tool_roundtrip": {
+            "count": 6,
+            "p50_ms": 0.0,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "event_loop_lag": {
+            "count": 25,
+            "p50_ms": 0.0,
+            "p95_ms": 2.93,
+            "max_ms": 3.5
+          }
+        },
+        "turn_latency": {
+          "caller_end_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 2.07,
+            "p95_ms": 2.07,
+            "max_ms": 2.07
+          },
+          "caller_end_to_gemini_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.72,
+            "p95_ms": 0.72,
+            "max_ms": 0.72
+          },
+          "input_to_gemini_response_ms": {
+            "count": 1,
+            "p50_ms": 228.57,
+            "p95_ms": 228.57,
+            "max_ms": 228.57
+          },
+          "gemini_response_to_audio_ms": {
+            "count": 1,
+            "p50_ms": 0.01,
+            "p95_ms": 0.01,
+            "max_ms": 0.01
+          },
+          "gemini_audio_to_playout_ms": {
+            "count": 1,
+            "p50_ms": 1.36,
+            "p95_ms": 1.36,
+            "max_ms": 1.36
+          }
+        },
+        "turns": [
+          {
+            "turn": 1,
+            "outcome": "call_end",
+            "caller_end_to_playout_ms": 2.07,
+            "caller_end_to_gemini_audio_ms": 0.72,
+            "input_to_gemini_response_ms": 228.57,
+            "gemini_response_to_audio_ms": 0.01,
+            "gemini_audio_to_playout_ms": 1.36
+          }
+        ]
+      },
+      "outbound_message_bytes": 4312.0
+    }
+  ]
+}

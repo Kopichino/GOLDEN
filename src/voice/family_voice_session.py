@@ -88,6 +88,7 @@ Call `record_medications` with a list of medicine strings when the caller provid
 Call `record_blood_group` with the blood group string when provided (e.g. \"O+\", \"B negative\", \"AB+\").
 Call `record_conditions` with a list of condition strings when the caller provides conditions.
 Call `record_family_summary` with a single concise summary string when the caller provides any final notes.
+Call `end_call` with no arguments only after your closing line has been spoken.
 
 Call tools silently — never announce \"I am recording this\" or \"I will note that\". Just call the tool and continue naturally.
 If a tool returns `rejected` (consent not yet given), re-ask for consent before continuing.
@@ -117,6 +118,13 @@ Call `record_family_summary` if not already done, with a brief summary of what w
 Then say: \"Thank you so much. I have everything the medical team needs. Please stay with your family member and the ambulance team will be with you shortly. Take care.\"
 End naturally. Do not ask any more questions after this closing.
 
+## Ending the Call
+
+You are responsible for hanging up. The caller must never have to end the call themselves.
+Once your final closing line has been spoken — including any last safety note such as \"I cannot give diagnosis or medical advice\" — call `end_call`.
+Call `end_call` the same way when consent is refused, when the caller says bye or asks to stop, and when the caller is too distressed to continue: say the one short closing line first, then call `end_call`.
+Never call `end_call` before your closing line has been spoken, and never call it twice.
+
 ## Consent Refused or Caller Hangs Up Early
 
 If consent is refused: say \"Completely understood. I am sorry to disturb you at this time. Please take care.\" Then stop.
@@ -144,9 +152,15 @@ class FamilyDisclosureAccumulator:
     blood_group: str | None = None
     conditions: list[str] = field(default_factory=list)
     summary: str | None = None
+    end_call_requested: bool = False
 
     def apply_tool_call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Apply one allow-listed family disclosure tool call."""
+        if name == "end_call":
+            # Hanging up grants no disclosure authority, so it is not consent-gated:
+            # a refused or distressed caller still has to be released from the leg.
+            self.end_call_requested = True
+            return {"status": "accepted"}
         if name == "record_consent":
             self.consent_granted = bool(arguments.get("consent_granted", False))
             return {"status": "accepted" if self.consent_granted else "refused"}
@@ -181,6 +195,11 @@ class FamilyVoiceSession:
 
     def handle_tool_call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         return self.disclosures.apply_tool_call(name, arguments)
+
+    @property
+    def end_call_requested(self) -> bool:
+        """The agent has spoken its closing line and asked to hang up."""
+        return self.disclosures.end_call_requested
 
     def callback_fields(self, call_status: str, duration_seconds: int | None) -> dict[str, Any]:
         """Build the provider-neutral fields consumed by the GOLDEN webhook."""

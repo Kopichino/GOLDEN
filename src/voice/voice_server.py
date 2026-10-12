@@ -18,6 +18,7 @@ from src.config import settings
 from src.voice.exotel_media_gateway import ExotelCallMetadata, parse_event
 from src.voice.family_voice_session import FamilyVoiceSession
 from src.voice.gemini_live_session import GeminiLiveFamilySession
+from src.voice.latency_metrics import VoiceLatencyMetrics
 from src.voice.live_bridge import LiveVoiceBridge
 
 logger = logging.getLogger("golden.voice.server")
@@ -90,6 +91,8 @@ async def _read_start_event(websocket: Any, stream_path: str = "") -> ExotelCall
 async def handle_connection(websocket: Any) -> None:
     """Handle one Exotel stream and send its structured result to GOLDEN."""
     started_at = time.monotonic()
+    metrics = VoiceLatencyMetrics()
+    metrics.mark_call_connected()
     metadata: ExotelCallMetadata | None = None
     family_session: FamilyVoiceSession | None = None
     transcript_logger: Any = None
@@ -111,12 +114,15 @@ async def handle_connection(websocket: Any) -> None:
         from src.voice.call_log import record_call_status
         from src.voice.transcript_logger import VoiceTranscriptLogger
 
-        record_call_status(
+        # The audit write is durable but not realtime; never hold the Gemini
+        # handshake behind disk I/O.
+        status_task = asyncio.create_task(asyncio.to_thread(
+            record_call_status,
             metadata.call_id,
             "IN_PROGRESS",
             source="voice_server",
             details="Exotel WebSocket stream answered; opening Gemini Live session",
-        )
+        ))
         transcript_logger = VoiceTranscriptLogger(metadata.case_id, metadata.call_id)
         transcript_logger.event("CALL_START", {
             "case_id": metadata.case_id,
@@ -125,6 +131,7 @@ async def handle_connection(websocket: Any) -> None:
         })
         voice_session = GeminiLiveFamilySession(settings.GEMINI_LIVE_MODEL)
         async with voice_session.connect() as gemini_session:
+            metrics.mark_gemini_connected()
             bridge = LiveVoiceBridge()
             family_session = await asyncio.wait_for(
                 bridge.run(
@@ -133,6 +140,7 @@ async def handle_connection(websocket: Any) -> None:
                     gemini_session,
                     voice_session,
                     transcript_logger=transcript_logger,
+                    metrics=metrics,
                 ),
                 timeout=settings.VOICE_CALL_TIMEOUT_SECONDS,
             )
@@ -140,6 +148,7 @@ async def handle_connection(websocket: Any) -> None:
     except (asyncio.TimeoutError, ValueError, RuntimeError, websockets.exceptions.ConnectionClosed) as exc:
         logger.warning("Voice stream ended: %s", exc, exc_info=True)
     finally:
+        metrics.mark_call_completed()
         if metadata:
             session = family_session or FamilyVoiceSession(metadata)
             payload = session.callback_fields(
@@ -148,14 +157,14 @@ async def handle_connection(websocket: Any) -> None:
             )
             payload["completed_at"] = datetime.now(timezone.utc).isoformat()
             payload["transcript"] = getattr(session, "transcript_messages", [])
-            payload["latency"] = getattr(session, "latency_snapshot", None)
+            payload["latency"] = metrics.snapshot()
             if transcript_logger is not None:
                 transcript_logger.event("CALL_END", {"status": call_status})
                 transcript_logger.close()
                 payload["transcript_path"] = str(transcript_logger.path)
             from src.voice.call_log import attach_outcome
 
-            attach_outcome(metadata.call_id, payload)
+            await asyncio.to_thread(attach_outcome, metadata.call_id, payload)
             await _post_completion(payload)
 
 

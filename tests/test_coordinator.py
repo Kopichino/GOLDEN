@@ -117,5 +117,11 @@ def test_coordinator_parallel_fanout_and_webhook_resumption(monkeypatch):
     assert resumed_state.voice_family.call_duration_seconds == 75
     # Attribution recorded at driver-trigger time survives the webhook merge
     assert resumed_state.voice_family.call_triggered_by == "driver_on_scene"
+    # ...and so does the contact the crew identified, which the dashboard displays
+    assert resumed_state.voice_family.recipient_relationship == "Spouse"
+    assert "+919840223344" in (
+        resumed_state.voice_family.next_of_kin_phone or "",
+        resumed_state.voice_family.recipient_phone or "",
+    )
     # Family history is pushed to FHIR (or failed gracefully when HAPI is down)
     assert resumed_state.voice_family.fhir_update_status in ["SUCCESS", "FAILED"]

@@ -126,3 +126,91 @@ def test_exotel_status_webhook_logs_unknown_call():
     entry = call_log.find_call_by_id("call-status-webhook-1")
     assert entry is not None
     assert entry["exotel_last_status"] == "no-answer"
+
+
+def test_call_outcome_webhook_refreshes_dashboard_case(monkeypatch):
+    """Collected family history has to reach the in-memory case the pages render.
+
+    The resume writes the LangGraph checkpoint, but every dashboard view reads
+    ``active_cases``, so a checkpoint-only update leaves the UI frozen on the
+    pre-call state forever.
+    """
+    from types import SimpleNamespace
+
+    from src.dashboard import server
+    from src.state.schema import (
+        CaseIdentityInput,
+        ControlAudit,
+        GoldenCaseState,
+        IncidentLocation,
+    )
+
+    case_id = "GOLDEN-TEST-SYNC-1"
+    thread_id = f"thread-{case_id}"
+    before = GoldenCaseState(
+        input_data=CaseIdentityInput(
+            case_id=case_id,
+            caller_phone="+919840012345",
+            raw_input="Two-wheeler skidded on wet asphalt.",
+            location=IncidentLocation(
+                latitude=12.9, longitude=80.1, address_or_landmark="Test Junction"
+            ),
+        ),
+        control_audit=ControlAudit(thread_id=thread_id, execution_stage="AWAITING_WEBHOOK"),
+    )
+    after = before.model_copy(deep=True)
+    after.voice_family.call_status = "COMPLETED"
+    after.voice_family.allergies = ["Penicillin"]
+    after.voice_family.blood_group = "O+"
+
+    monkeypatch.setattr(server, "active_cases", {case_id: before})
+    monkeypatch.setattr(server, "event_history", [])
+    monkeypatch.setattr(server, "coordinator", SimpleNamespace(
+        app=SimpleNamespace(get_state=lambda config: SimpleNamespace(values=after.model_dump()))
+    ))
+    monkeypatch.setattr(server, "handle_call_outcome", lambda payload, coord: {"status": "RESUMED"})
+    monkeypatch.setattr(server.callback_security, "validate", lambda *a, **k: (True, None))
+
+    response = TestClient(app).post(
+        "/webhook/call-outcome",
+        json={
+            "thread_id": thread_id,
+            "case_id": case_id,
+            "call_id": "call-sync-1",
+            "call_status": "COMPLETED",
+            "allergies": ["Penicillin"],
+            "blood_group": "O+",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "RESUMED"}
+    rendered = server.active_cases[case_id].voice_family
+    assert rendered.allergies == ["Penicillin"]
+    assert rendered.blood_group == "O+"
+    broadcast = server.event_history[-1]
+    assert broadcast["event_type"] == "FAMILY_CALL_OUTCOME"
+    assert broadcast["voice_family"]["allergies"] == ["Penicillin"]
+
+
+def test_call_outcome_webhook_ignores_cases_the_dashboard_does_not_hold(monkeypatch):
+    """A callback for an unknown case must not invent dashboard state."""
+    from types import SimpleNamespace
+
+    from src.dashboard import server
+
+    monkeypatch.setattr(server, "active_cases", {})
+    monkeypatch.setattr(server, "event_history", [])
+    monkeypatch.setattr(server, "coordinator", SimpleNamespace(
+        app=SimpleNamespace(get_state=lambda config: SimpleNamespace(values=None))
+    ))
+    monkeypatch.setattr(server, "handle_call_outcome", lambda payload, coord: {"status": "RESUMED"})
+    monkeypatch.setattr(server.callback_security, "validate", lambda *a, **k: (True, None))
+
+    response = TestClient(app).post(
+        "/webhook/call-outcome",
+        json={"thread_id": "thread-ghost", "case_id": "GHOST-CASE", "call_id": "call-ghost"},
+    )
+
+    assert response.status_code == 200
+    assert server.event_history == []

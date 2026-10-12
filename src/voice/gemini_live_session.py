@@ -57,6 +57,14 @@ class GeminiLiveFamilySession:
             declaration("record_blood_group", "Record the reported blood group."),
             declaration("record_conditions", "Record reported pre-existing conditions as a list.", "ARRAY"),
             declaration("record_family_summary", "Record a concise family-reported summary."),
+            types.FunctionDeclaration(
+                name="end_call",
+                description=(
+                    "Hang up the call. Call this only after the final closing line has "
+                    "been spoken, so the caller is never left holding an open line."
+                ),
+                parameters=types.Schema(type=types.Type.OBJECT, properties={}),
+            ),
         ])]
 
     @asynccontextmanager

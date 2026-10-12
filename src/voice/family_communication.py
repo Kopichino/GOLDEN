@@ -14,11 +14,14 @@ Explicit Non-Responsibilities:
 """
 
 from datetime import datetime, timezone
+import logging
 from typing import Any, Dict, List, Optional
 from src.voice.exotel_client import ExotelClient
 from src.config import settings
 from src.safety.guardrails import PIISanitizer
 from src.state.schema import VoiceFamilyOutput
+
+logger = logging.getLogger("golden.voice.family")
 
 class FamilyCommunicationAgent:
     """Specialist agent / workflow for patient family outreach and medical disclosure gathering."""
@@ -77,9 +80,16 @@ class FamilyCommunicationAgent:
                 "message": f"Consent refused for {sanitized_phone}: not in consenting register (TRAI TCCCPR 2018 guardrail)."
             }
 
+        # Exotel trial accounts refuse to dial unverified numbers, so the leg is
+        # pinned to the account's verified number. This happens only after consent,
+        # so an unregistered number can never be reached by dialling the pin instead.
+        dial_phone = settings.VOICE_TEST_RECIPIENT_PHONE or recipient_phone
+        if dial_phone != recipient_phone:
+            logger.warning("Family outreach leg pinned to VOICE_TEST_RECIPIENT_PHONE")
+
         # 2. Trigger telephony
         result = self.client.trigger_outbound_call(
-            recipient_phone=recipient_phone,
+            recipient_phone=dial_phone,
             case_id=case_id,
             callback_url=callback_url or settings.EXOTEL_STATUS_CALLBACK_URL,
             thread_id=thread_id,

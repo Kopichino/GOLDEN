@@ -189,6 +189,18 @@ class ExotelMediaGateway:
         return AudioBridge.resample_8k_to_16k(frame.pcm_8khz)
 
     @staticmethod
+    def to_clear_message(stream_sid: str | None) -> str:
+        """Barge-in control: drop whatever Exotel still has queued for this stream.
+
+        The stream identifier is required — a bare clear is not bound to a call
+        leg, so the provider would keep playing the interrupted agent audio.
+        """
+        message: dict[str, Any] = {"event": "clear"}
+        if stream_sid:
+            message["stream_sid"] = stream_sid
+        return json.dumps(message)
+
+    @staticmethod
     def to_exotel_message(
         pcm_audio: bytes,
         source_rate: int = 24000,
