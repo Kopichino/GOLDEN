@@ -790,3 +790,68 @@ body.driver-body {
   text-align: center;
 }
 
+/* =====================================================================
+   Desktop Companion Layout (>= 900px)
+   The mobile feed is a single narrow column; on a desktop that leaves a
+   lot of dead space, so the same cards reflow into a two-column grid.
+   Spans follow DOM order so no markup has to be reordered: hero, milestone
+   and the on-scene form run full width; route/clinical and hospital/crew
+   pair up on shared rows.
+   ===================================================================== */
+@media (min-width: 900px) {
+  .driver-main-container {
+    max-width: 1160px;
+    padding: 1.25rem 1.5rem 3rem;
+    gap: 1.1rem;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .acuity-hero-card,
+  .milestone-action-section,
+  .mobile-map-section,
+  .on-scene-id-card {
+    grid-column: 1 / -1;
+  }
+
+  .driver-leaflet-map {
+    height: 360px;
+  }
+
+  /* Give the full-width on-scene form a comfortable two-field-per-row cap */
+  .on-scene-id-card .driver-form-grid {
+    max-width: 720px;
+  }
+
+  .incident-landmark {
+    font-size: 1.5rem;
+  }
+
+  .milestone-action-section {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+    gap: 1rem;
+    align-items: center;
+  }
+
+  .btn-giant-milestone {
+    min-height: 92px;
+  }
+}
+
+/* Narrow phones: keep the unit identity on one line instead of breaking mid-callsign. */
+@media (max-width: 430px) {
+  .unit-callsign,
+  .veh-plate {
+    white-space: nowrap;
+  }
+  .driver-header {
+    gap: 0.5rem;
+  }
+  .veh-plate {
+    font-size: 0.68rem;
+  }
+}
+
+

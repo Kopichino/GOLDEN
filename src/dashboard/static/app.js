@@ -9,13 +9,37 @@ let activeCases = [];
 let selectedCaseId = null;
 let selectedPresetKey = "tambaram_femur_crash";
 let eventSource = null;
+let signalLogEntries = [];
+let currentReportedAt = null;
+let currentFeedFilter = "ALL";
+let lastQueueSignature = "";
 
 // DOM Elements
 const incidentListContainer = document.getElementById("incident-list-container");
 const emptyQueueMessage = document.getElementById("empty-queue-message");
-const activeCasesCount = document.getElementById("active-cases-count");
 const fhirStatusText = document.getElementById("fhir-status-text");
 const fhirDot = document.getElementById("fhir-dot");
+const sseDot = document.getElementById("sse-dot");
+const sseStatusText = document.getElementById("sse-status-text");
+
+// Live-experience elements (stream health, ops clock, Golden Hour, signal timeline)
+const consoleClockValue = document.getElementById("console-clock-value");
+const goldenHourDial = document.getElementById("golden-hour-dial");
+const ghRingProgress = document.getElementById("gh-ring-progress");
+const ghElapsed = document.getElementById("gh-elapsed");
+const ghPhase = document.getElementById("gh-phase");
+const signalLogContainer = document.getElementById("signal-log-container");
+const signalLogCount = document.getElementById("signal-log-count");
+const signalLogEmpty = document.getElementById("signal-log-empty");
+
+const GH_RING_LENGTH = 263.9;
+const GOLDEN_HOUR_MS = 60 * 60 * 1000;
+
+// /api/cases reports acuity as `acuity`; "PENDING" means not triaged yet.
+function normalizeAcuity(raw) {
+  const value = (raw || "").toUpperCase();
+  return ["RED", "YELLOW", "GREEN", "BLACK"].includes(value) ? value : null;
+}
 
 // Inspector Elements
 const heroCaseId = document.getElementById("hero-case-id");
@@ -29,7 +53,6 @@ const btnOpenOverrideModal = document.getElementById("btn-open-override-modal");
 const callerNarrativeText = document.getElementById("caller-narrative-text");
 const callerContactValue = document.getElementById("caller-contact-value");
 const callerGpsValue = document.getElementById("caller-gps-value");
-const safetyTag = document.getElementById("safety-tag");
 
 // Card 2: Triage
 const triageConfidenceBadge = document.getElementById("triage-confidence-badge");
@@ -129,6 +152,7 @@ const stepMap = {
   "FHIR_REGISTRATION": "step-voice",
   "VOICE_DISPATCH": "step-voice",
   "AWAITING_WEBHOOK": "step-voice",
+  "AWAITING_FAMILY_CONTACT": "step-voice",
   "DISPATCHER_REVIEW": "step-complete",
   "CONSOLIDATION": "step-complete",
   "COMPLETED": "step-complete"
@@ -156,6 +180,9 @@ document.addEventListener("DOMContentLoaded", () => {
   fetchCases();
   fetchAnalytics();
   initSSE();
+  startOpsClock();
+  startGoldenHourTicker();
+  syncStickyOffsets();
 });
 
 function setupEventListeners() {
@@ -276,7 +303,8 @@ function setupEventListeners() {
     pill.addEventListener("click", () => {
       document.querySelectorAll(".pill").forEach((p) => p.classList.remove("active"));
       pill.classList.add("active");
-      renderIncidentList(pill.dataset.filter);
+      currentFeedFilter = pill.dataset.filter;
+      renderIncidentList(currentFeedFilter);
     });
   });
 }
@@ -289,9 +317,13 @@ function initSSE() {
     eventSource.close();
   }
 
+  setStreamState("connecting");
   eventSource = new EventSource("/api/events");
 
+  eventSource.onopen = () => setStreamState("live");
+
   eventSource.onmessage = (e) => {
+    setStreamState("live");
     try {
       const event = JSON.parse(e.data);
       handleLiveEvent(event);
@@ -302,21 +334,50 @@ function initSSE() {
 
   eventSource.onerror = () => {
     console.warn("SSE connection lost. Reconnecting in 3s...");
+    setStreamState("down");
     eventSource.close();
     setTimeout(initSSE, 3000);
   };
 }
 
-function handleLiveEvent(event) {
-  // Fetch latest cases to keep list fresh
-  fetchCases(false);
+function setStreamState(state) {
+  if (!sseDot || !sseStatusText) return;
+  const banner = document.getElementById("console-offline-banner");
 
-  // If the event corresponds to currently inspected case, reload details
-  if (selectedCaseId && (event.case_id === selectedCaseId || event.ticket_id)) {
-    fetchCaseDetails(selectedCaseId, false);
+  if (state === "live") {
+    sseDot.className = "dot-indicator dot-connected";
+    sseStatusText.textContent = "Streaming Live";
+    if (banner) banner.remove();
+  } else if (state === "down") {
+    sseDot.className = "dot-indicator dot-alert";
+    sseStatusText.textContent = "Reconnecting...";
+    if (!banner) showOfflineBanner("Realtime event stream disconnected — the console is showing its last known state.");
+  } else {
+    sseDot.className = "dot-indicator dot-alert";
+    sseStatusText.textContent = "Connecting...";
   }
+}
 
-  // Handle specific Ambulance status update from field driver
+function showOfflineBanner(message) {
+  if (document.getElementById("console-offline-banner")) return;
+  const banner = document.createElement("div");
+  banner.id = "console-offline-banner";
+  banner.className = "console-offline-banner";
+  banner.setAttribute("role", "status");
+  banner.textContent = message;
+  const layout = document.querySelector(".console-layout");
+  layout.parentNode.insertBefore(banner, layout);
+}
+
+function handleLiveEvent(event) {
+  pushSignalEntry(event);
+
+  // The server replays its ring buffer on every (re)connect. Those events are
+  // history: fold them into the timeline but never announce or re-fetch them.
+  if (isHistoricalEvent(event)) return;
+
+  scheduleStreamRefresh(event);
+
   if (event.event_type === "AMBULANCE_STATUS_UPDATE") {
     handleAmbulanceMilestoneSync(event);
   }
@@ -325,6 +386,183 @@ function handleLiveEvent(event) {
   if (event.event_type === "FAMILY_CONTACT_DISCOVERED") {
     handleFamilyContactDiscovered(event);
   }
+}
+
+const REPLAY_WINDOW_MS = 20000;
+function isHistoricalEvent(event) {
+  if (!event || !event.timestamp) return false;
+  const at = new Date(event.timestamp).getTime();
+  if (Number.isNaN(at)) return false;
+  return Date.now() - at > REPLAY_WINDOW_MS;
+}
+
+// A burst of events must cost one round-trip, not one per event.
+let streamRefreshTimer = null;
+function scheduleStreamRefresh(event) {
+  const touchedSelected = !selectedCaseId || !event.case_id || event.case_id === selectedCaseId || event.ticket_id;
+  clearTimeout(streamRefreshTimer);
+  streamRefreshTimer = setTimeout(() => {
+    fetchCases(false);
+    if (selectedCaseId && touchedSelected) fetchCaseDetails(selectedCaseId, false);
+  }, 700);
+  throttledAnalyticsRefresh();
+}
+
+let analyticsTimer = null;
+function throttledAnalyticsRefresh() {
+  if (analyticsTimer) return;
+  analyticsTimer = setTimeout(() => {
+    analyticsTimer = null;
+    fetchAnalytics();
+  }, 4000);
+}
+
+// ---------------------------------------------------------------------
+// Live Signal Timeline — mirrors the existing /api/events stream
+// ---------------------------------------------------------------------
+const SIGNAL_COPY = {
+  INGESTION_STARTED:       { title: "Incident ingested",        tone: "critical" },
+  DISPATCH_CYCLE_COMPLETE: { title: "Dispatch cycle complete",  tone: "ok" },
+  DISPATCHER_OVERRIDE:     { title: "Dispatcher override applied", tone: "urgent" },
+  AMBULANCE_STATUS_UPDATE: { title: "Field CAD milestone",      tone: "urgent" },
+  FAMILY_CONTACT_DISCOVERED: { title: "Victim identity resolved on scene", tone: "ok" },
+  FAMILY_CALL_STATUS_UPDATE: { title: "Exotel call progress",   tone: "live" }
+};
+
+function pushSignalEntry(event) {
+  if (!signalLogContainer) return;
+
+  const key = `${event.timestamp || ""}|${event.case_id || ""}|${event.stage || event.event_type || ""}|${event.mission_status || event.exotel_status || ""}`;
+  if (signalLogEntries.some((e) => e.key === key)) return;
+
+  const id = event.stage || event.event_type || "EVENT";
+  const copy = SIGNAL_COPY[id] || { title: humanizeStage(id), tone: "live" };
+  const data = event.data || {};
+
+  let detail = "";
+  if (id === "DISPATCH_CYCLE_COMPLETE") {
+    detail = [data.acuity && `${data.acuity} acuity`, data.hospital, data.bed_status && `beds: ${data.bed_status}`]
+      .filter(Boolean).join(" · ");
+  } else if (id === "INGESTION_STARTED") {
+    detail = data.landmark || "";
+  } else if (id === "DISPATCHER_OVERRIDE") {
+    detail = [data.acuity_override && `acuity → ${data.acuity_override}`, data.hospital_override && `→ ${data.hospital_override}`, data.notes]
+      .filter(Boolean).join(" · ");
+  } else if (id === "AMBULANCE_STATUS_UPDATE") {
+    detail = [event.mission_status && humanizeStage(event.mission_status), event.unit_id, event.notes].filter(Boolean).join(" · ");
+  } else if (id === "FAMILY_CALL_STATUS_UPDATE") {
+    detail = [event.exotel_status, event.call_status].filter(Boolean).join(" → ");
+  } else if (id === "FAMILY_CONTACT_DISCOVERED") {
+    detail = event.patient_name || event.next_of_kin_phone || "";
+  }
+
+  signalLogEntries.unshift({ key: key, html: buildSignalNode(copy, detail, event, id) });
+  if (signalLogEntries.length > 60) signalLogEntries.pop();
+
+  // Prepend only the new node so existing entries don't replay their entrance.
+  if (signalLogEmpty) signalLogContainer.appendChild(signalLogEmpty);
+  const node = document.createElement("div");
+  node.innerHTML = signalLogEntries[0].html;
+  signalLogContainer.prepend(node.firstElementChild);
+  while (signalLogContainer.querySelectorAll(".signal-entry").length > signalLogEntries.length) {
+    const nodes = signalLogContainer.querySelectorAll(".signal-entry");
+    nodes[nodes.length - 1].remove();
+  }
+  if (signalLogEmpty) signalLogEmpty.classList.add("hidden");
+  if (signalLogCount) signalLogCount.textContent = `${signalLogEntries.length} EVENT${signalLogEntries.length === 1 ? "" : "S"}`;
+}
+
+function buildSignalNode(copy, detail, event, id) {
+  const time = event.timestamp ? new Date(event.timestamp) : new Date();
+  const hhmmss = time.toLocaleTimeString([], { hour12: false });
+  const caseRef = event.case_id ? String(event.case_id).split("-").slice(-2).join("-") : "";
+  return `
+    <div class="signal-entry" data-tone="${copy.tone}">
+      <div class="signal-time">${hhmmss}${caseRef ? ` · ${escapeHtml(caseRef)}` : ""}</div>
+      <div class="signal-title">${escapeHtml(copy.title)}</div>
+      ${detail ? `<div class="signal-body">${escapeHtml(detail)}</div>` : ""}
+    </div>
+  `;
+}
+
+function humanizeStage(value) {
+  const words = String(value).replace(/_/g, " ").toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+// ---------------------------------------------------------------------
+// Ops clock + MoRTH Golden Hour countdown dial
+// ---------------------------------------------------------------------
+function startOpsClock() {
+  if (!consoleClockValue) return;
+  const tick = () => {
+    consoleClockValue.textContent = new Date().toLocaleTimeString([], { hour12: false });
+  };
+  tick();
+  setInterval(tick, 1000);
+}
+
+// The nav tabs and the sticky queue panel both dock under the header, which
+// wraps to a second row at mid widths — publish its real height as a token.
+function syncStickyOffsets() {
+  const header = document.querySelector(".console-header");
+  const tabs = document.querySelector(".console-nav-tabs");
+  if (!header || !tabs) return;
+  const root = document.documentElement;
+  const apply = () => {
+    root.style.setProperty("--header-h", `${header.offsetHeight}px`);
+    root.style.setProperty("--tabs-h", `${tabs.offsetHeight}px`);
+  };
+  apply();
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(apply);
+    ro.observe(header);
+    ro.observe(tabs);
+  } else {
+    window.addEventListener("resize", apply);
+  }
+}
+
+let goldenHourTick = null;
+
+function startGoldenHourTicker() {
+  if (!goldenHourDial || !ghRingProgress || !ghElapsed) return;
+  const tick = () => {
+    if (!currentReportedAt) {
+      ghRingProgress.style.strokeDasharray = "3 7";
+      ghRingProgress.style.strokeDashoffset = "0";
+      ghElapsed.textContent = "--:--";
+      if (ghPhase) ghPhase.textContent = "STANDBY";
+      goldenHourDial.removeAttribute("data-gh");
+      return;
+    }
+
+    ghRingProgress.style.strokeDasharray = String(GH_RING_LENGTH);
+    const elapsedMs = Date.now() - currentReportedAt.getTime();
+
+    if (elapsedMs >= GOLDEN_HOUR_MS) {
+      ghRingProgress.style.strokeDashoffset = 0;
+      ghElapsed.textContent = "60:00+";
+      if (ghPhase) ghPhase.textContent = "WINDOW BREACHED";
+      goldenHourDial.setAttribute("data-gh", "critical");
+      return;
+    }
+
+    const ratio = Math.max(0, elapsedMs) / GOLDEN_HOUR_MS;
+    ghRingProgress.style.strokeDashoffset = (GH_RING_LENGTH * (1 - ratio)).toFixed(1);
+    const mins = Math.floor(elapsedMs / 60000);
+    const secs = Math.floor((elapsedMs % 60000) / 1000);
+    ghElapsed.textContent = `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+
+    if (ghPhase) {
+      ghPhase.textContent = ratio < 0.5 ? "GOLDEN HOUR" : (ratio < 0.83 ? "PLATINUM 10" : "WINDOW LATE");
+    }
+    goldenHourDial.setAttribute("data-gh", ratio >= 0.83 ? "critical" : (ratio >= 0.5 ? "warn" : "ok"));
+  };
+
+  tick();
+  goldenHourTick = tick;
+  setInterval(tick, 1000);
 }
 
 // =====================================================================
@@ -354,9 +592,18 @@ async function fetchCases(autoSelectFirst = true) {
     if (!res.ok) return;
     const data = await res.json();
     activeCases = data.cases || [];
-    activeCasesCount.textContent = activeCases.length;
 
-    renderIncidentList();
+    // SSE fires on every agent stage; only repaint the queue when its content
+    // actually changed, otherwise cards re-trigger their entrance animation.
+    const signature = activeCases
+      .map((c) => `${c.case_id}:${c.acuity}:${c.hard_sos}:${c.execution_stage}:${c.active_provider}:${c.selected_hospital}`)
+      .join("|");
+    if (signature !== lastQueueSignature) {
+      lastQueueSignature = signature;
+      renderIncidentList(currentFeedFilter);
+    } else {
+      highlightSelectedInQueue();
+    }
 
     if (autoSelectFirst && activeCases.length > 0 && !selectedCaseId) {
       selectCase(activeCases[0].case_id);
@@ -386,12 +633,12 @@ async function fetchCaseDetails(caseId, highlightItem = true) {
 // =====================================================================
 // UI Rendering
 // =====================================================================
-function renderIncidentList(filter = "ALL") {
+function renderIncidentList(filter = currentFeedFilter) {
   incidentListContainer.innerHTML = "";
 
   const filtered = activeCases.filter((c) => {
     if (filter === "ALL") return true;
-    return c.acuity_level === filter;
+    return normalizeAcuity(c.acuity) === filter;
   });
 
   if (filtered.length === 0) {
@@ -404,11 +651,14 @@ function renderIncidentList(filter = "ALL") {
 
   filtered.forEach((c) => {
     const card = document.createElement("div");
-    const acuityClass = c.acuity_level ? `acuity-${c.acuity_level.toLowerCase()}` : "acuity-none";
+    const acuity = normalizeAcuity(c.acuity);
+    const acuityClass = acuity ? `acuity-${acuity.toLowerCase()}` : "acuity-none";
     card.className = `incident-item ${acuityClass} ${c.case_id === selectedCaseId ? "selected" : ""}`;
     card.dataset.caseId = c.case_id;
 
     const timeStr = new Date(c.reported_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const stageLabel = (c.execution_stage || "ingestion").replace(/_/g, " ").toLowerCase();
+    const agentLabel = c.active_provider ? `▸ ${c.active_provider.replace(/_/g, " ")} · ${stageLabel}` : `▸ awaiting triage · ${stageLabel}`;
 
     card.innerHTML = `
       <div class="item-top">
@@ -416,15 +666,22 @@ function renderIncidentList(filter = "ALL") {
         <span class="item-time">${timeStr}</span>
       </div>
       <div class="item-landmark">${escapeHtml(c.landmark)}</div>
-      <div class="item-snippet">${escapeHtml(c.raw_input_snippet)}</div>
+      <div class="item-snippet">${escapeHtml(agentLabel)}</div>
       <div class="item-bottom">
-        <span class="badge badge-acuity-${c.acuity_level || 'none'}">${c.acuity_level || 'PENDING'}</span>
-        <span class="meta-item font-mono" style="font-size:0.7rem; color:var(--text-dim);">${c.selected_hospital || 'Routing...'}</span>
+        <span class="badge badge-acuity-${acuity || 'none'}">${acuity || 'PENDING'}</span>
+        ${c.hard_sos ? '<span class="badge badge-hard-sos">⚡ SOS</span>' : ''}
+        <span class="meta-item font-mono">${c.selected_hospital ? escapeHtml(c.selected_hospital) : 'Routing...'}</span>
       </div>
     `;
 
     card.addEventListener("click", () => selectCase(c.case_id));
     incidentListContainer.appendChild(card);
+  });
+}
+
+function highlightSelectedInQueue() {
+  document.querySelectorAll(".incident-item").forEach((el) => {
+    el.classList.toggle("selected", el.dataset.caseId === selectedCaseId);
   });
 }
 
@@ -446,6 +703,12 @@ function renderCaseDetails(state) {
   heroLandmark.textContent = input.location.address_or_landmark;
   const reportedTime = new Date(input.reported_at).toLocaleString();
   heroReportedTime.textContent = `Reported: ${reportedTime} | Channel: ${input.modality.toUpperCase()} (${input.language})`;
+
+  // Golden Hour window + room posture track the selected incident
+  currentReportedAt = input.reported_at ? new Date(input.reported_at) : null;
+  if (goldenHourTick) goldenHourTick();
+  const posture = (triage.acuity_level || "").toUpperCase();
+  document.body.dataset.posture = ["RED", "YELLOW", "GREEN"].includes(posture) ? posture.toLowerCase() : "idle";
 
   // Acuity Badge
   heroAcuityBadge.className = `badge badge-acuity-${triage.acuity_level || 'none'}`;
@@ -603,7 +866,8 @@ function renderCaseDetails(state) {
 
   // Medical Tags
   medicalTagsContainer.innerHTML = "";
-  const hasHistory = (voice.allergies && voice.allergies.length > 0) || (voice.medications && voice.medications.length > 0) || voice.blood_group;
+  const conditions = voice.pre_existing_conditions || [];
+  const hasHistory = (voice.allergies && voice.allergies.length > 0) || (voice.medications && voice.medications.length > 0) || conditions.length > 0 || voice.blood_group;
 
   if (hasHistory) {
     if (voice.blood_group) {
@@ -622,6 +886,12 @@ function renderCaseDetails(state) {
       const tag = document.createElement("span");
       tag.className = "tag-med";
       tag.textContent = `Med: ${m}`;
+      medicalTagsContainer.appendChild(tag);
+    });
+    conditions.forEach((cond) => {
+      const tag = document.createElement("span");
+      tag.className = "tag-condition";
+      tag.textContent = `Condition: ${cond}`;
       medicalTagsContainer.appendChild(tag);
     });
   } else {
@@ -689,16 +959,11 @@ function renderCaseDetails(state) {
     // Card 5 Live Scannable Driver Companion QR Code Panel
     const cardQrPanel = document.getElementById("card-ambulance-qr-panel");
     const cardQrImg = document.getElementById("card-ambulance-qr-img");
-    const cardQrLink = document.getElementById("card-ambulance-qr-link");
     const targetTicket = amb.callout_ticket_id || `CALLOUT-108-${input.case_id}`;
 
     if (cardQrPanel) cardQrPanel.style.display = "flex";
     if (cardQrImg) {
       cardQrImg.src = `/api/driver/${encodeURIComponent(targetTicket)}/qr?t=${Date.now()}`;
-    }
-    if (cardQrLink) {
-      cardQrLink.href = `/driver/${encodeURIComponent(targetTicket)}`;
-      cardQrLink.textContent = `/driver/${targetTicket} ↗`;
     }
 
     // Update 6-step CAD Mission Stepper
@@ -761,13 +1026,11 @@ function initCorridorMap() {
       const lat = e.latlng.lat;
       const lon = e.latlng.lng;
       const popupHtml = `
-        <div style="font-family:var(--font-sans); font-size:0.78rem; padding:4px 2px; color:#e2e8f0; min-width:180px;">
-          <div style="font-weight:700; color:#38bdf8; margin-bottom:4px;">📍 Incident Pin Drop</div>
-          <div style="font-family:var(--font-mono); font-size:0.75rem; color:#94a3b8; margin-bottom:8px;">
-            ${lat.toFixed(4)}° N, ${lon.toFixed(4)}° E
-          </div>
-          <button id="btn-quick-dispatch-spot" style="width:100%; background:linear-gradient(135deg,#ef4444,#b91c1c); color:#fff; border:none; border-radius:4px; padding:6px 10px; font-weight:700; font-size:0.75rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:4px; box-shadow:0 0 10px rgba(239,68,68,0.5);">
-            <span>🚨 Dispatch Incident Here</span>
+        <div class="pin-drop">
+          <div class="pin-drop-title">Incident Pin Drop</div>
+          <div class="pin-drop-coords">${lat.toFixed(4)}° N, ${lon.toFixed(4)}° E</div>
+          <button id="btn-quick-dispatch-spot" class="btn-danger-block" type="button">
+            <span>🚨</span><span>Dispatch Incident Here</span>
           </button>
         </div>
       `;
@@ -910,14 +1173,14 @@ function updateCorridorMap(state) {
   incidentMarker = L.marker([incidentLat, incidentLon], { icon: incidentIcon, zIndexOffset: 1200 })
     .addTo(corridorMap)
     .bindPopup(`
-      <div style="font-size:0.82rem; font-family:var(--font-sans); line-height:1.45; min-width:210px;">
-        <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
-          <span style="background:#ff3b30; color:#fff; font-weight:800; font-size:0.68rem; padding:2px 6px; border-radius:4px;">URGENT ACCIDENT SCENE</span>
+      <div class="scene-map-popup">
+        <div class="scene-popup-head">
+          <span class="scene-flag">URGENT ACCIDENT SCENE</span>
           <span class="badge ${isRed ? 'badge-acuity-red' : (isYellow ? 'badge-acuity-yellow' : 'badge-acuity-green')}">${escapeHtml(acuity)}</span>
         </div>
-        <strong style="color:#ffffff; font-size:0.9rem;">${escapeHtml(loc.address_or_landmark)}</strong><br/>
-        <span style="color:var(--text-secondary); font-size:0.75rem;">Case: <code>${escapeHtml(state.input_data.case_id)}</code></span><br/>
-        <div style="margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.1); font-size:0.75rem; color:var(--text-secondary);">
+        <strong class="scene-popup-landmark">${escapeHtml(loc.address_or_landmark)}</strong>
+        <span class="scene-popup-case">Case: <code>${escapeHtml(state.input_data.case_id)}</code></span>
+        <div class="scene-popup-meta">
           <strong>GPS Coordinates:</strong> ${incidentLat.toFixed(4)}° N, ${incidentLon.toFixed(4)}° E<br/>
           <strong>Hard-SOS Flag:</strong> ${state.triage?.hard_sos ? '⚡ Active' : 'Normal Protocol'}
         </div>
@@ -925,7 +1188,7 @@ function updateCorridorMap(state) {
     `);
 
   // 2.5 Golden Hour 5km Catchment Perimeter Ring
-  const ringColor = isRed ? "#ef4444" : (isYellow ? "#f59e0b" : "#10b981");
+  const ringColor = isRed ? "#f43f5e" : (isYellow ? "#f59e0b" : "#10b981");
   incidentPerimeter = L.circle([incidentLat, incidentLon], {
     radius: 5000,
     color: ringColor,
@@ -996,7 +1259,7 @@ function updateCorridorMap(state) {
             </div>
             <strong style="color:var(--accent-cyan); font-size:0.92rem; display:block; margin:2px 0 6px;">${escapeHtml(c.name)}</strong>
             <div class="hosp-popup-metrics">
-              <div><strong>Transit ETA:</strong> <span style="color:#00f0ff; font-weight:700;">${c.eta_minutes ? `${c.eta_minutes} mins` : '--'}</span> (${distKm} km via ${c.routing_source || 'OSRM'})</div>
+              <div><strong>Transit ETA:</strong> <span style="color:#22d3ee; font-weight:700;">${c.eta_minutes ? `${c.eta_minutes} mins` : '--'}</span> (${distKm} km via ${c.routing_source || 'OSRM'})</div>
               <div><strong>ICU Capacity:</strong> <span style="color:#10b981; font-weight:700;">${icuBeds} Free</span> / ${c.total_icu_beds || 15} Total</div>
               <div><strong>ER Trauma Bays:</strong> ${c.available_er_beds != null ? c.available_er_beds : '--'} Available</div>
               <div><strong>Specialties:</strong> ${(c.specialties || ['Trauma', 'Neurosurgery']).slice(0, 3).join(', ')}</div>
@@ -1008,37 +1271,35 @@ function updateCorridorMap(state) {
       boundsPoints.push([c.latitude, c.longitude]);
 
     } else {
-      // Nearby Alternate Facility Pin
+      // Nearby alternates render as a plain dot: their name, distance and beds are
+      // already in the ranked table, so labelled cards here just fog the corridor.
       const nearbyPinHtml = `
         <div class="hospital-map-pin nearby-pin">
-          <div class="pin-title-row">
-            <span class="pin-icon">🏥</span>
-            <span class="pin-name">${escapeHtml(cleanName)}</span>
-            <span class="pin-badge ${traumaCls}">${c.trauma_level === "LEVEL_1" ? "L1" : "L2"}</span>
-          </div>
-          <div class="pin-meta-row">
-            <span>📍 ${distKm}km</span>
-            <span class="bed-pill">${icuBeds} ICU</span>
-          </div>
+          <span class="pin-dot ${traumaCls}"></span>
         </div>
       `;
 
       const nearbyIcon = L.divIcon({
         className: "custom-hospital-icon-wrapper nearby-wrapper",
         html: nearbyPinHtml,
-        iconSize: [155, 48],
-        iconAnchor: [77, 24]
+        iconSize: [20, 20],
+        iconAnchor: [10, 10]
       });
 
       const marker = L.marker([c.latitude, c.longitude], { icon: nearbyIcon, zIndexOffset: 500 })
         .addTo(corridorMap)
+        .bindTooltip(`${escapeHtml(cleanName)} · ${distKm} km · ${icuBeds} ICU`, {
+          direction: "top",
+          offset: [0, -12],
+          opacity: 1
+        })
         .bindPopup(`
           <div class="hosp-map-popup">
             <div class="hosp-popup-header">
-              <span style="color:var(--text-secondary); font-size:0.72rem; font-weight:700;">NEARBY BACKUP FACILITY</span>
+              <span class="hosp-popup-kicker">NEARBY BACKUP FACILITY</span>
               <span class="badge ${traumaCls === 'l1' ? 'badge-hard-sos' : 'badge-acuity-yellow'}">${traumaLabel}</span>
             </div>
-            <strong style="color:#ffffff; font-size:0.88rem; display:block; margin:2px 0 6px;">${escapeHtml(c.name)}</strong>
+            <strong class="hosp-popup-name">${escapeHtml(c.name)}</strong>
             <div class="hosp-popup-metrics">
               <div><strong>Distance:</strong> ${distKm} km (${c.eta_minutes ? `🚗 ${c.eta_minutes}m ETA` : 'via OSRM'})</div>
               <div><strong>Beds Available:</strong> ${icuBeds} ICU / ${c.available_er_beds || '--'} ER</div>
@@ -1080,7 +1341,7 @@ function updateCorridorMap(state) {
       .bindPopup(`
         <div style="font-size:0.8rem; font-family:var(--font-sans); line-height:1.45;">
           <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
-            <span style="color:#00f0ff; font-weight:bold;">🚑 108 CAD AMBULANCE ALLOCATED</span>
+            <span style="color:#22d3ee; font-weight:bold;">🚑 108 CAD AMBULANCE ALLOCATED</span>
             <span class="badge ${isAls ? 'badge-hard-sos' : 'badge-acuity-green'}">${escapeHtml(ambUnit.unit_type)}</span>
           </div>
           <strong>Unit:</strong> ${escapeHtml(ambUnit.unit_id)} (${escapeHtml(ambUnit.vehicle_number)})<br/>
@@ -1112,7 +1373,7 @@ function updateCorridorMap(state) {
 
     // Glowing emergency highway corridor route
     routePolyline = L.polyline(polylineCoords, {
-      color: "#00f0ff",
+      color: "#22d3ee",
       weight: 5,
       opacity: 0.95,
       lineCap: "round",
@@ -1533,26 +1794,9 @@ function setupAnalyticsTab() {
     });
   }
 
-  // Quick export buttons
-  const btnExportQuick = document.getElementById("btn-export-audit-json-quick");
-  if (btnExportQuick) {
-    btnExportQuick.addEventListener("click", handleExportAuditJson);
-  }
-
   const btnExportFull = document.getElementById("btn-export-full-audit-json");
   if (btnExportFull) {
     btnExportFull.addEventListener("click", handleExportAuditJson);
-  }
-
-  // Refresh analytics
-  const btnRefresh = document.getElementById("btn-refresh-analytics");
-  if (btnRefresh) {
-    btnRefresh.addEventListener("click", () => {
-      btnRefresh.classList.add("spinning");
-      fetchAnalytics().finally(() => {
-        setTimeout(() => btnRefresh.classList.remove("spinning"), 500);
-      });
-    });
   }
 
   // Handover selection dropdown
@@ -1745,7 +1989,7 @@ async function refreshAuditCasesTable() {
       cachedAnalyticsCases.forEach((c) => {
         const opt = document.createElement("option");
         opt.value = c.case_id;
-        opt.textContent = `${c.case_id} — [${c.acuity_level || "PENDING"}] ${c.landmark || "Chennai Corridor"}`;
+        opt.textContent = `${c.case_id} — [${normalizeAcuity(c.acuity) || "PENDING"}] ${c.landmark || "Chennai Corridor"}`;
         select.appendChild(opt);
       });
 
@@ -1780,11 +2024,8 @@ function renderAuditTableRows(cases) {
   cases.forEach((c) => {
     const tr = document.createElement("tr");
 
-    const acuity = c.acuity_level || "PENDING";
-    let badgeClass = "badge-acuity-none";
-    if (acuity === "RED") badgeClass = "badge-acuity-red";
-    else if (acuity === "YELLOW") badgeClass = "badge-acuity-yellow";
-    else if (acuity === "GREEN") badgeClass = "badge-acuity-green";
+    const acuity = normalizeAcuity(c.acuity) || "PENDING";
+    const badgeClass = acuity === "PENDING" ? "badge-acuity-none" : `badge-acuity-${acuity.toLowerCase()}`;
 
     const reportedDate = c.reported_at ? new Date(c.reported_at).toLocaleTimeString() : "--:--";
 
@@ -1824,7 +2065,7 @@ function filterAuditTable(query) {
     const idMatch = c.case_id && c.case_id.toLowerCase().includes(query);
     const landmarkMatch = c.landmark && c.landmark.toLowerCase().includes(query);
     const hospMatch = c.selected_hospital && c.selected_hospital.toLowerCase().includes(query);
-    const acuityMatch = c.acuity_level && c.acuity_level.toLowerCase().includes(query);
+    const acuityMatch = normalizeAcuity(c.acuity)?.toLowerCase() === query;
     return idMatch || landmarkMatch || hospMatch || acuityMatch;
   });
   renderAuditTableRows(filtered);
@@ -2188,32 +2429,32 @@ function handleAmbulanceMilestoneSync(event) {
   if (hudEta) {
     if (isLoaded) {
       hudEta.textContent = "In Highway Transit (Telemetry Active)";
-      hudEta.style.color = "#ff3b30";
+      hudEta.className = "hud-val text-red";
     } else if (isComplete) {
       hudEta.textContent = "Patient Admitted (0m)";
-      hudEta.style.color = "#10b981";
+      hudEta.className = "hud-val text-green";
     } else if (status === "ON_SCENE") {
       hudEta.textContent = "On Scene (Stabilization)";
-      hudEta.style.color = "#f59e0b";
+      hudEta.className = "hud-val text-amber";
     }
   }
 
   // Update Hospital Card Bed Status
-  if (fhirBedStatusTag) {
+  if (hospitalBedBadge) {
     if (isComplete) {
-      fhirBedStatusTag.textContent = "CONFIRMED / ADMITTED";
-      fhirBedStatusTag.className = "badge badge-acuity-GREEN";
+      hospitalBedBadge.textContent = "CONFIRMED / ADMITTED";
+      hospitalBedBadge.className = "bed-status-badge highlight";
     } else if (isLoaded) {
-      fhirBedStatusTag.textContent = "RESERVED (INBOUND TRANSIT)";
-      fhirBedStatusTag.className = "badge badge-acuity-YELLOW";
+      hospitalBedBadge.textContent = "RESERVED (INBOUND TRANSIT)";
+      hospitalBedBadge.className = "bed-status-badge";
     }
   }
 
-  // Fetch updated case details in background to ensure full state sync
-  if (selectedCaseId) {
-    fetchCaseDetails(selectedCaseId, false);
-  }
+  // Full state re-sync is already coalesced by scheduleStreamRefresh().
 }
+
+const TOAST_LIFETIME_MS = 6200;
+const TOAST_MAX_VISIBLE = 3;
 
 function showCadNotificationToast({ type = "", title, message, sub }) {
   let container = document.getElementById("cad-toast-container");
@@ -2224,31 +2465,44 @@ function showCadNotificationToast({ type = "", title, message, sub }) {
     document.body.appendChild(container);
   }
 
+  // A dispatcher console must never let alerts bury the panel behind them.
+  while (container.children.length >= TOAST_MAX_VISIBLE) {
+    container.firstElementChild.remove();
+  }
+
   const toast = document.createElement("div");
   toast.className = `cad-toast ${type}`;
+  toast.setAttribute("role", "status");
   toast.innerHTML = `
     <div class="cad-toast-title">
       <span>${escapeHtml(title)}</span>
-      <span style="font-size:0.65rem; color:#38bdf8; font-family:monospace;">${new Date().toLocaleTimeString()}</span>
+      <span class="cad-toast-time">${new Date().toLocaleTimeString()}</span>
     </div>
     <div class="cad-toast-msg">${escapeHtml(message)}</div>
     ${sub ? `<div class="cad-toast-sub">${escapeHtml(sub)}</div>` : ""}
+    <button class="cad-toast-close" type="button" aria-label="Dismiss notification">&times;</button>
   `;
 
   container.appendChild(toast);
 
-  setTimeout(() => {
-    toast.style.opacity = "0";
-    toast.style.transform = "translateY(-15px) scale(0.95)";
-    setTimeout(() => toast.remove(), 350);
-  }, 5500);
+  const dismiss = () => {
+    if (!toast.isConnected) return;
+    toast.classList.add("dismissing");
+    setTimeout(() => toast.remove(), 260);
+  };
+  toast.querySelector(".cad-toast-close").addEventListener("click", dismiss);
+  setTimeout(dismiss, TOAST_LIFETIME_MS);
 }
 
+let cadAudioCtx = null;
 function playCadChime() {
   try {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if (!AudioContext) return;
-    const ctx = new AudioContext();
+    // Browsers cap live AudioContexts (~6); one shared context per session.
+    if (!cadAudioCtx) cadAudioCtx = new AudioContext();
+    const ctx = cadAudioCtx;
+    if (ctx.state === "suspended") return;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = "sine";
@@ -2360,9 +2614,10 @@ function renderCallLogs(callLogs, voice) {
       })
       .join("");
 
+    // Show every turn: the collected history (conditions, notes, closing) lands at the
+    // end of the call, and the timeline box already scrolls.
     const transcript = (call.outcome && Array.isArray(call.outcome.transcript) ? call.outcome.transcript : [])
-      .slice(0, 6)
-      .map((t) => `<div class="call-log-turn ${t.role === "AGENT" ? "turn-agent" : "turn-caller"}">${t.role === "AGENT" ? "Shreya" : "Family"}: ${t.text}</div>`)
+      .map((t) => `<div class="call-log-turn ${t.role === "AGENT" ? "turn-agent" : "turn-caller"}">${t.role === "AGENT" ? "Shreya" : "Family"}: ${escapeHtml(t.text || "")}</div>`)
       .join("");
 
     const summary = call.outcome && call.outcome.call_summary

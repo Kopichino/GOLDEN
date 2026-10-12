@@ -1,0 +1,136 @@
+/* =====================================================================
+   GOLDEN CAD — Guided onboarding tour (self-contained, no dependencies)
+   ===================================================================== */
+
+#tour-root {
+  position: fixed;
+  inset: 0;
+  z-index: 99998;
+  display: none;
+  font-family: var(--font-sans, 'Inter', sans-serif);
+}
+
+#tour-root.tour-open {
+  display: block;
+}
+
+/* The spotlight sits over the current target; its huge spread shadow dims the
+   rest of the page, so the highlighted panel is the only bright region. */
+#tour-spotlight {
+  position: absolute;
+  border-radius: 12px;
+  box-shadow: 0 0 0 9999px rgba(6, 9, 16, 0.72);
+  outline: 2px solid var(--accent-cyan, #00f0ff);
+  transition: top 0.22s ease, left 0.22s ease, width 0.22s ease, height 0.22s ease;
+  pointer-events: none;
+}
+
+#tour-root.tour-center #tour-spotlight {
+  opacity: 0;
+}
+
+#tour-tip {
+  position: absolute;
+  width: min(360px, calc(100vw - 32px));
+  background: rgba(14, 20, 34, 0.98);
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  border-radius: 14px;
+  padding: 1rem 1.1rem 0.9rem;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 30px rgba(0, 240, 255, 0.15);
+  color: #f8fafc;
+}
+
+#tour-root.tour-center #tour-tip {
+  left: 50% !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%);
+}
+
+.tour-kicker {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-cyan, #00f0ff);
+  margin-bottom: 0.35rem;
+}
+
+.tour-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.25;
+  margin-bottom: 0.4rem;
+}
+
+.tour-text {
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: #cbd5e1;
+}
+
+.tour-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.tour-dots {
+  display: flex;
+  gap: 5px;
+}
+
+.tour-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.tour-dot.active {
+  background: var(--accent-cyan, #00f0ff);
+}
+
+.tour-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tour-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.tour-btn.primary {
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
+  color: #fff;
+}
+
+.tour-btn.ghost {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+}
+
+.tour-btn.link {
+  background: transparent;
+  color: #94a3b8;
+  padding-inline: 0.3rem;
+}
+
+.tour-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #tour-spotlight {
+    transition: none;
+  }
+}

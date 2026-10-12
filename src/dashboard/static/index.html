@@ -4,16 +4,28 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="GOLDEN: Guideline-Grounded Orchestrated LLM Dispatch for Emergency Networks - Real-time AI decision-support dashboard for 108/112 dispatchers in India.">
+  <meta name="color-scheme" content="dark light">
   <title>GOLDEN — Emergency Network Dispatcher Console</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,300..800&family=Instrument+Sans:ital,wght@0,400..700;1,400..600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <!-- Leaflet.js Tactical Corridor Map -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/tour.css">
 </head>
-<body class="dark-theme">
+<body class="dark-theme" data-app data-posture="idle">
+  <!-- Atmosphere: living aura that the glass material refracts -->
+  <div class="atmosphere" aria-hidden="true">
+    <span class="aura-blob aura-blob--a"></span>
+    <span class="aura-blob aura-blob--b"></span>
+    <span class="aura-blob aura-blob--c"></span>
+    <span class="atmosphere-grid"></span>
+    <span class="atmosphere-tint"></span>
+  </div>
+  <span class="grain" aria-hidden="true"></span>
+
   <!-- Top Navigation & Global Status -->
   <header class="console-header">
     <div class="brand-group">
@@ -35,6 +47,14 @@
     </div>
 
     <div class="status-group">
+      <div class="system-metric" id="link-status-indicator" title="Realtime orchestration stream (SSE)">
+        <span class="dot-indicator dot-alert" id="sse-dot"></span>
+        <div class="metric-info">
+          <span class="metric-label">Event Stream</span>
+          <span class="metric-value" id="sse-status-text">Connecting...</span>
+        </div>
+      </div>
+
       <div class="system-metric" id="fhir-status-indicator">
         <span class="dot-indicator dot-connected" id="fhir-dot"></span>
         <div class="metric-info">
@@ -43,20 +63,15 @@
         </div>
       </div>
 
-      <div class="system-metric">
-        <span class="dot-indicator dot-connected"></span>
-        <div class="metric-info">
-          <span class="metric-label">LangGraph Engine</span>
-          <span class="metric-value">Active (MemorySaver)</span>
-        </div>
+      <div class="console-clock" id="console-clock" title="Corridor local time">
+        <span class="clock-label">OPS CLOCK</span>
+        <span class="clock-value font-mono" id="console-clock-value">--:--:--</span>
       </div>
 
-      <div class="system-metric">
-        <div class="metric-info">
-          <span class="metric-label">Active Incidents</span>
-          <span class="metric-value metric-accent" id="active-cases-count">0</span>
-        </div>
-      </div>
+      <button class="btn-ghost" id="btn-open-tour" title="Guided tour of the console">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>Tour</span>
+      </button>
 
       <button class="btn-primary glow-btn" id="btn-open-simulate-modal">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
@@ -82,16 +97,6 @@
         </svg>
         <span>Analytics & Handover Audit</span>
         <span class="tab-badge badge-pulse">Live</span>
-      </button>
-    </div>
-    <div class="nav-controls">
-      <button class="btn-ghost btn-sm" id="btn-export-audit-json-quick" title="Export Full Audit Report JSON">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-          <polyline points="7 10 12 15 17 10"></polyline>
-          <line x1="12" y1="15" x2="12" y2="3"></line>
-        </svg>
-        <span>Export Audit JSON</span>
       </button>
     </div>
   </nav>
@@ -122,17 +127,31 @@
     <section class="case-detail-panel" id="case-detail-panel">
       <!-- Top Inspector Bar -->
       <div class="case-hero-card" id="case-hero-card">
+        <span class="hero-alert-rail" aria-hidden="true"></span>
         <div class="hero-left">
           <div class="hero-badges">
             <span class="badge badge-case" id="hero-case-id">SELECT A CASE</span>
             <span class="badge badge-acuity-none" id="hero-acuity-badge">PENDING</span>
             <span class="badge badge-hard-sos hidden" id="hero-hard-sos-badge">⚡ HARD-SOS DETECTED</span>
           </div>
+          <span class="hero-kicker">Incident Scene · Guideline-Grounded Dispatch</span>
           <h2 class="hero-landmark" id="hero-landmark">No case selected</h2>
           <p class="hero-time" id="hero-reported-time">Awaiting incoming incident...</p>
         </div>
 
         <div class="hero-right">
+          <!-- Signature: MoRTH Golden Hour window, live from reported_at -->
+          <div class="golden-hour" id="golden-hour-dial" title="Elapsed time within the MoRTH Golden Hour window">
+            <svg class="gh-ring" viewBox="0 0 96 96" aria-hidden="true">
+              <circle class="gh-ring-track" cx="48" cy="48" r="42"></circle>
+              <circle class="gh-ring-progress" id="gh-ring-progress" cx="48" cy="48" r="42"></circle>
+            </svg>
+            <div class="gh-readout">
+              <span class="gh-time font-mono" id="gh-elapsed">--:--</span>
+              <span class="gh-label" id="gh-phase">STANDBY</span>
+            </div>
+          </div>
+          <span class="gh-caption">MoRTH GOLDEN HOUR · 60:00</span>
           <button class="btn-secondary" id="btn-open-override-modal" disabled>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
             <span>Dispatcher Override</span>
@@ -140,9 +159,12 @@
         </div>
       </div>
 
-      <!-- Live Orchestrated Workflow Pipeline -->
+      <!-- Live Orchestrated Workflow Pipeline (the Signal Spine) -->
       <div class="pipeline-card" id="pipeline-tracker-card">
-        <div class="pipeline-title">GOLDEN Orchestration Flow & Dependency Graph</div>
+        <div class="pipeline-head">
+          <div class="pipeline-title">GOLDEN Orchestration Flow & Dependency Graph</div>
+          <span class="pipeline-legend"><span class="legend-node"></span> live stage</span>
+        </div>
         <div class="pipeline-steps" id="pipeline-steps-container">
           <div class="step-item active" id="step-ingest">
             <div class="step-icon">1</div>
@@ -181,8 +203,10 @@
         </div>
       </div>
 
-      <!-- Live Tactical Corridor Map & Highway Route (Leaflet.js + OSRM) -->
-      <div class="tactical-map-card" id="tactical-corridor-map-card">
+      <!-- Tactical Map + Live Signal Timeline -->
+      <div class="inspector-split">
+        <!-- Live Tactical Corridor Map & Highway Route (Leaflet.js + OSRM) -->
+        <div class="tactical-map-card" id="tactical-corridor-map-card">
           <div class="card-head map-header-flex">
             <div class="card-title">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -193,49 +217,68 @@
               <span>Live Corridor Tactical Map & Healthcare Network</span>
             </div>
             <div class="map-head-actions">
-              <div class="map-hud-legend">
-                <span class="hud-chip chip-incident"><span class="pulse-beacon-dot"></span> ⚠️ Accident Scene</span>
-                <span class="hud-chip chip-hosp-dest">🎯 Destination Hospital</span>
-                <span class="hud-chip chip-hosp-nearby">🏥 Nearby Facilities</span>
-                <span class="hud-chip chip-amb">🚑 108 Unit</span>
-                <span class="hud-chip chip-osrm-route">🛣️ OSRM Route</span>
-                <span class="hud-chip chip-perimeter">⭕ 5km Catchment</span>
-              </div>
               <div class="map-quick-buttons">
                 <button class="btn-map-control" id="btn-focus-accident" title="Center on Accident Scene">📍 Focus Incident</button>
                 <button class="btn-map-control" id="btn-fit-corridor" title="Fit Entire Incident Corridor">🗺️ Fit Corridor</button>
               </div>
             </div>
           </div>
-        <div class="map-container-wrap">
-          <div id="corridor-map-container"></div>
-          <div class="map-overlay-hud" id="map-overlay-hud">
-            <div class="hud-stat">
-              <span class="hud-label">TARGET FACILITY</span>
-              <span class="hud-val" id="hud-target-hospital">Awaiting selection</span>
+          <div class="map-container-wrap">
+            <div id="corridor-map-container"></div>
+            <div class="map-overlay-hud" id="map-overlay-hud">
+              <div class="hud-stat">
+                <span class="hud-label">TARGET FACILITY</span>
+                <span class="hud-val" id="hud-target-hospital">Awaiting selection</span>
+              </div>
+              <div class="hud-stat">
+                <span class="hud-label">TRANSIT ETA</span>
+                <span class="hud-val text-cyan" id="hud-transit-eta">-- mins</span>
+              </div>
+              <div class="hud-stat">
+                <span class="hud-label">ROAD DISTANCE</span>
+                <span class="hud-val" id="hud-driving-distance">-- km (OSRM)</span>
+              </div>
             </div>
-            <div class="hud-stat">
-              <span class="hud-label">TRANSIT ETA</span>
-              <span class="hud-val text-cyan" id="hud-transit-eta">-- mins</span>
-            </div>
-            <div class="hud-stat">
-              <span class="hud-label">ROAD DISTANCE</span>
-              <span class="hud-val" id="hud-driving-distance">-- km (OSRM)</span>
+            <div class="map-hud-legend">
+              <span class="hud-chip chip-incident"><span class="pulse-beacon-dot"></span> Accident Scene</span>
+              <span class="hud-chip chip-hosp-dest">🎯 Destination Hospital</span>
+              <span class="hud-chip chip-hosp-nearby">● Nearby Facilities</span>
+              <span class="hud-chip chip-amb">🚑 108 Unit</span>
+              <span class="hud-chip chip-osrm-route">🛣️ OSRM Route</span>
+              <span class="hud-chip chip-perimeter">⭕ 5km Catchment</span>
             </div>
           </div>
         </div>
+
+        <!-- Live system activity, streamed from the existing /api/events SSE feed -->
+        <aside class="signal-log-card">
+          <div class="card-head signal-head">
+            <div class="card-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+              </svg>
+              <span>Live Signal Timeline</span>
+            </div>
+            <span class="tag-status" id="signal-log-count">0 EVENTS</span>
+          </div>
+          <div class="signal-log" id="signal-log-container">
+            <div class="empty-state empty-slim" id="signal-log-empty">
+              <p>Awaiting stream.</p>
+              <span class="subtext">Ingest, override and field-milestone events will appear here in real time.</span>
+            </div>
+          </div>
+        </aside>
       </div>
 
-      <!-- Grid of Specialist Cards -->
+      <!-- Specialist Grid: asymmetric bento, not equal cards -->
       <div class="specialist-grid">
         <!-- Card 1: Verbatim Caller Input & Safety -->
-        <div class="specialist-card">
+        <div class="specialist-card sc-narrative">
           <div class="card-head">
             <div class="card-title">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-              <span>Caller Narrative & Safety</span>
+              <span>Caller Narrative</span>
             </div>
-            <span class="tag-status" id="safety-tag">SECURE</span>
           </div>
           <div class="card-body">
             <div class="narrative-box" id="caller-narrative-text">
@@ -252,8 +295,8 @@
           </div>
         </div>
 
-        <!-- Card 2: Clinical Triage Agent -->
-        <div class="specialist-card">
+        <!-- Card 2: Clinical Triage Agent (featured) -->
+        <div class="specialist-card sc-triage">
           <div class="card-head">
             <div class="card-title">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
@@ -273,7 +316,7 @@
         </div>
 
         <!-- Card 3: Hospital & Bed Matcher -->
-        <div class="specialist-card">
+        <div class="specialist-card sc-hospital">
           <div class="card-head">
             <div class="card-title">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
@@ -292,6 +335,7 @@
             </div>
             <div class="candidates-table-container">
               <div class="table-label">Top Ranked Chennai Corridor Facilities:</div>
+              <div class="candidates-table-scroll">
               <table class="candidates-table" id="candidates-table">
                 <thead>
                   <tr>
@@ -305,12 +349,13 @@
                   <tr><td colspan="4" class="text-muted">No candidates queried yet.</td></tr>
                 </tbody>
               </table>
+              </div>
             </div>
           </div>
         </div>
 
         <!-- Card 4: FHIR R4 Pre-Registration & Family Communication -->
-        <div class="specialist-card">
+        <div class="specialist-card sc-fhir">
           <div class="card-head">
             <div class="card-title">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
@@ -377,8 +422,8 @@
           </div>
         </div>
 
-        <!-- Card 5: Ambulance Fleet Allocation (108 CAD) -->
-        <div class="specialist-card ambulance-card">
+        <!-- Card 5: Ambulance Fleet Allocation (108 CAD) — full-width command strip -->
+        <div class="specialist-card ambulance-card sc-ambulance">
           <div class="card-head">
             <div class="card-title">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -474,14 +519,8 @@
                   <span class="qr-live-tag">⚡ LIVE SYNC (SSE)</span>
                 </div>
                 <p class="card-qr-subtext">
-                  Scan this QR code with any smartphone camera on the local Wi-Fi. Every milestone tap on mobile (Acknowledge ➡️ En Route ➡️ Patient Loaded ➡️ Handover) advances the mission and updates this central dispatch console in real time.
+                  Scan with any phone camera on the local Wi-Fi. Each mobile milestone tap advances the mission and updates this console live.
                 </p>
-                <div class="card-qr-actions-row">
-                  <span class="card-qr-link-lbl">Direct Mobile Link:</span>
-                  <a id="card-ambulance-qr-link" class="card-qr-link font-mono" target="_blank" href="#">
-                    /driver/... ↗
-                  </a>
-                </div>
               </div>
             </div>
 
@@ -529,18 +568,7 @@
   <section class="analytics-layout hidden" id="view-analytics">
     <!-- Top KPI Performance Ribbon -->
     <div class="analytics-kpi-ribbon">
-      <div class="kpi-card">
-        <div class="kpi-header">
-          <span class="kpi-title">TOTAL INCIDENTS TRACKED</span>
-          <span class="kpi-badge badge-blue">Corridor CAD</span>
-        </div>
-        <div class="kpi-body">
-          <span class="kpi-number" id="stat-total-incidents">0</span>
-          <span class="kpi-subtext" id="stat-incidents-subtext">Active & Benchmarked Cases</span>
-        </div>
-      </div>
-
-      <div class="kpi-card">
+      <div class="kpi-card kpi-lead">
         <div class="kpi-header">
           <span class="kpi-title">MEAN DISPATCH DECISION LATENCY</span>
           <span class="kpi-badge badge-cyan">Orchestrated LLM</span>
@@ -549,7 +577,18 @@
           <div class="kpi-number-group">
             <span class="kpi-number" id="stat-avg-latency">-- ms</span>
           </div>
-          <span class="kpi-subtext">Deterministic Floor: <strong class="text-cyan">0.032 ms</strong> (<35μs)</span>
+          <span class="kpi-subtext">Deterministic Hard-SOS floor: <strong class="text-cyan">0.032 ms</strong> (&lt;35μs)</span>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <span class="kpi-title">TOTAL INCIDENTS TRACKED</span>
+          <span class="kpi-badge badge-blue">Corridor CAD</span>
+        </div>
+        <div class="kpi-body">
+          <span class="kpi-number" id="stat-total-incidents">0</span>
+          <span class="kpi-subtext" id="stat-incidents-subtext">Active & Benchmarked Cases</span>
         </div>
       </div>
 
@@ -994,7 +1033,7 @@
       </div>
       <div class="modal-body">
         <p class="modal-intro">As the human-in-the-loop controller, you can modify agent recommendations with an audit note.</p>
-        
+
         <div class="form-group">
           <label for="select-override-acuity">Override Acuity Classification:</label>
           <select id="select-override-acuity">
@@ -1050,7 +1089,7 @@
     <div class="modal-content modal-callout">
       <div class="modal-header">
         <div class="modal-title-wrap">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00f0ff" stroke-width="2">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M10 17h4V5H2v12h3m5 0a2 2 0 1 0 4 0m-4 0a2 2 0 1 1 4 0m5-5h3l3 4v3h-2m-4 0a2 2 0 1 0 4 0m-4 0a2 2 0 1 1 4 0M6 10h4M8 8v4"/>
           </svg>
           <h3 id="callout-modal-title">EMRI 108 Emergency Ambulance CAD Callout Ticket</h3>
@@ -1156,5 +1195,6 @@
   <div class="cad-toast-container" id="cad-toast-container"></div>
 
   <script src="/static/app.js"></script>
+  <script src="/static/tour.js"></script>
 </body>
 </html>

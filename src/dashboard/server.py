@@ -145,6 +145,27 @@ class OnSceneIdentificationRequest(BaseModel):
     next_of_kin_phone: str
     clinical_notes: Optional[str] = None
 
+def _sync_case_from_checkpoint(payload: CallOutcomeWebhookPayload) -> Optional[dict]:
+    """Reload a resumed case into the in-memory map the dashboard renders."""
+    case_key = next(
+        (
+            key
+            for key, state in active_cases.items()
+            if key == payload.case_id
+            or state.control_audit.thread_id == payload.thread_id
+            or state.input_data.case_id == payload.case_id
+        ),
+        None,
+    )
+    if case_key is None:
+        return None
+    checkpoint = coordinator.app.get_state({"configurable": {"thread_id": payload.thread_id}})
+    if not checkpoint or not checkpoint.values:
+        return None
+    state = GoldenCaseState.model_validate(checkpoint.values)
+    active_cases[case_key] = state
+    return state.voice_family.model_dump(mode="json")
+
 @app.post("/webhook/call-outcome")
 async def receive_voice_call_outcome(
     request: Request,
@@ -164,7 +185,21 @@ async def receive_voice_call_outcome(
         raise HTTPException(status_code=401, detail=reason)
     # The resume path performs the FHIR family-history update; keep it off the
     # event loop so slow FHIR responses never block SSE or other endpoints.
-    return await run_in_threadpool(handle_call_outcome, payload, coordinator)
+    result = await run_in_threadpool(handle_call_outcome, payload, coordinator)
+    # The resume writes the LangGraph checkpoint, but the pages render the
+    # in-memory case map, so the collected family history is invisible until this
+    # reload and the SSE nudge that makes the dashboard re-fetch it.
+    refreshed = await run_in_threadpool(_sync_case_from_checkpoint, payload)
+    if refreshed:
+        broadcast_event({
+            "event_type": "FAMILY_CALL_OUTCOME",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "case_id": payload.case_id,
+            "call_id": payload.call_id,
+            "call_status": payload.call_status,
+            "voice_family": refreshed,
+        })
+    return result
 
 EXOTEL_FAILURE_STATUS_MAP = {
     "no-answer": "NO_ANSWER",
@@ -675,8 +710,26 @@ def get_case_handover(case_id: str):
     }
     return handover_slip
 
+def _companion_base_url(request: Request) -> str:
+    """Absolute base a phone can actually reach, preserving the caller's scheme and host.
+
+    A public tunnel terminates as https, so hard-coding http would make the scanned
+    QR bounce to an unreachable page; localhost requests fall back to the LAN IP so a
+    phone on the same Wi-Fi still resolves it.
+    """
+    host_header = request.headers.get("host", "127.0.0.1:8000")
+    if "localhost" in host_header or "127.0.0.1" in host_header:
+        port = host_header.split(":")[-1] if ":" in host_header else "8000"
+        target_host = f"{get_lan_ip()}:{port}"
+    else:
+        target_host = host_header
+
+    scheme = request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
+    scheme = scheme or (request.url.scheme if request.url.scheme in ("http", "https") else "http")
+    return f"{scheme}://{target_host}"
+
 @app.get("/api/cases/{case_id}/callout")
-def get_ambulance_callout_ticket(case_id: str):
+def get_ambulance_callout_ticket(case_id: str, request: Request):
     """Retrieve structured 108 ambulance dispatch callout ticket."""
     if case_id not in active_cases:
         raise HTTPException(status_code=404, detail="Case not found")
@@ -733,8 +786,7 @@ def get_ambulance_callout_ticket(case_id: str):
     }
 
     target_ticket = amb.callout_ticket_id or f"CALLOUT-108-{case_id}"
-    lan_ip = get_lan_ip()
-    ticket["mobile_companion_url"] = f"http://{lan_ip}:8000/driver/{target_ticket}"
+    ticket["mobile_companion_url"] = f"{_companion_base_url(request)}/driver/{target_ticket}"
     ticket["driver_qr_url"] = f"/api/driver/{target_ticket}/qr"
     return ticket
 
@@ -769,15 +821,7 @@ def generate_driver_qr_code(ticket_or_case_id: str, request: Request):
         target_ticket_id = state.ambulance_dispatch.callout_ticket_id
 
     # Detect network host for smartphone access over Wi-Fi
-    host_header = request.headers.get("host", "127.0.0.1:8000")
-    if "localhost" in host_header or "127.0.0.1" in host_header:
-        lan_ip = get_lan_ip()
-        port = host_header.split(":")[-1] if ":" in host_header else "8000"
-        target_host = f"{lan_ip}:{port}"
-    else:
-        target_host = host_header
-
-    target_url = f"http://{target_host}/driver/{target_ticket_id}"
+    target_url = f"{_companion_base_url(request)}/driver/{target_ticket_id}"
 
     qr = qrcode.QRCode(
         version=1,
