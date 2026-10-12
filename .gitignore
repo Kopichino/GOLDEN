@@ -31,3 +31,6 @@ logs/
 *.zip
 data/synthea_output/
 .active_calls.json
+
+# Browser verification scratch (screenshots / CDP probes)
+.uicheck/

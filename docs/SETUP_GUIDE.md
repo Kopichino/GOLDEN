@@ -178,7 +178,7 @@ docker compose up -d
 python scripts/seed_synthea.py
 
 # Terminal 3: dashboard + callback service
-python -m uvicorn src.dashboard.server:app --host 127.0.0.1 --port 8000 --reload
+python -m uvicorn src.dashboard.server:app --host 0.0.0.0 --port 8000 --reload
 
 # Terminal 4: optional CLI demonstration
 python scripts/run_demo.py
